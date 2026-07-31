@@ -14,6 +14,8 @@ var _fog: FogOfWar
 var _territory: Territory
 var _combat: CombatManager
 var _age: AgeManager
+var _ai: AIOpponent
+var _wincon: WinConditions
 var _hud_label: Label
 var _place_cooldown: float = 0.0
 
@@ -128,13 +130,24 @@ func _show_title() -> void:
 	_combat.setup(world.shard)
 	for i in 2:
 		_combat.spawn_soldier(Vector3(cx - 2.0, gy, cz + 1.0 + float(i)), 0, &"player", "stone")
-	for i in 3:
-		_combat.spawn_soldier(Vector3(cx - 20.0 + float(i) * 1.5, 0, cz - 20.0), 1, &"enemy", "wood")
 	_commander.add_to_group("combatants")
 
 	# Phase 8: age progression. Buildings that complete feed the age gates.
 	_age = AgeManager.new(&"player")
 	_age.age_advanced.connect(_on_age_advanced)
+
+	# Phase 10: enemy AI civ to the north-east + win conditions. The static
+	# enemy squad above is replaced by a living opponent that builds an economy.
+	Events.add_resource(&"enemy", &"wood", 150)
+	Events.add_resource(&"enemy", &"stone", 80)
+	var ai_home := Vector3(cx + 26, 0, cz + 26)
+	ai_home.y = world.shard.get_height(int(ai_home.x), int(ai_home.z))
+	_ai = AIOpponent.new(world, _units, _combat, _buildings, StorageDepot.new(&"enemy"), ai_home, 555)
+	_ai.setup_economy(3, 2)
+	_wincon = WinConditions.new()
+	_wincon.register(&"player")
+	_wincon.register(&"enemy")
+	_wincon.civ_won.connect(_on_civ_won)
 
 	_camera.focus_on(_commander.position)
 
@@ -285,6 +298,19 @@ func _process(_delta: float) -> void:
 		if is_instance_valid(p):
 			sources.append({"x": int(p.position.x), "z": int(p.position.z), "radius": 7})
 	_fog.refresh_visibility(sources)
+
+	# AI + win conditions (cheap checks each frame).
+	if _ai != null and _commander != null:
+		_ai.tick(_commander.position)
+	if _wincon != null:
+		var defeated: StringName = _wincon.check_conquest(&"enemy", true, _combat.soldiers_for(&"enemy").size())
+		if defeated != &"":
+			_on_civ_won(&"player", WinConditions.CONQUEST)
+
+func _on_civ_won(civ: StringName, condition: StringName) -> void:
+	if _hud_label != null:
+		_hud_label.text = "VICTORY — %s wins by %s!" % [civ, condition]
+	print("[main] %s wins by %s" % [civ, condition])
 
 func _dig_at(pos: Vector3) -> void:
 	# Right-click digs the clicked column (mine/harvest/dig terrain live).

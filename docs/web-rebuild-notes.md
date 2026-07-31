@@ -332,3 +332,24 @@ during the rebuild:_
   11 polish pass; the deterministic sim is the foundation that had to land first
   per the physics roadmap ground rules.
 - Next: Phase 10 — AI opponents + prestige/win conditions.
+
+### 2026-07-31 — Phase 10: AI opponent + win conditions
+
+- `scripts/combat/soldier.gd`: added `order_attack_move(pos)` — advance to a
+  point while auto-acquiring enemies met along the way.
+- `scripts/ai/ai_opponent.gd`: scripted enemy civ (seeded, deterministic). Runs
+  a build→gather→army→attack loop on the Sim tick: keeps peasants on gather
+  standing orders, builds a house when affordable, trains soldiers as resources
+  allow, and sends an attack wave at the player's base once it fields a squad.
+- `scripts/ai/win_conditions.gd`: per-civ standing + two win paths — **conquest**
+  (eliminate all enemy commanders+soldiers; last civ standing wins) and
+  **prestige** (buildings×2 + techs×3 + age×4 vs a threshold).
+- `main.gd`: enemy AI civ seeded north-east with a starting stockpile; static
+  enemy squad replaced by the living opponent. Win check each frame → HUD
+  "VICTORY" banner + log.
+- Verified: 2 new scenarios green — `aiwave` (economy set up, soldiers trained
+  toward a squad, attack wave sent) and `wincon` (conquest elimination → winner,
+  prestige scoring crosses threshold + signal). Full **31-scenario suite
+  passing**, zero warnings, clean boot with AI + win conditions live.
+- Next: Phase 11 — season reset, hall of legends, polish pass (water/fire
+  visuals, HUD depth, balance).

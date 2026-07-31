@@ -62,6 +62,12 @@ func order_guard(pos: Vector3) -> void:
 	target = null
 	move_to(pos)
 
+func order_attack_move(pos: Vector3) -> void:
+	# Advance to a point; auto-acquire and fight enemies met along the way.
+	guard_post = pos
+	target = null
+	move_to(pos)
+
 func move_to(pos: Vector3) -> void:
 	move_target = pos
 	has_move_target = true

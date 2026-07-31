@@ -6,11 +6,14 @@ extends CharacterBody3D
 
 signal arrived
 signal cargo_changed(amount: int, capacity: int)
+signal commander_died
+signal commander_respawned
 
 const SPEED: float = 4.0
 const BEAM_RANGE: float = 3.5
 const BEAM_RATE: float = 2.0          # gather ticks per second while beaming
 const CARGO_CAPACITY: int = 100
+const RESPAWN_TIME: float = 8.0
 
 var civ_id: StringName = &"player"
 var cargo: int = 0
@@ -23,6 +26,10 @@ var shard: VoxelShard
 var rig: BlendShellRig
 var anim: SillyPhysics
 var beam_mesh: MeshInstance3D
+var health: Health
+var alive: bool = true
+var respawn_point: Vector3 = Vector3.ZERO
+var _respawn_timer: float = 0.0
 var _beam_accum: float = 0.0
 
 func setup(p_shard: VoxelShard, p_team: int = 0) -> void:
@@ -54,6 +61,10 @@ func setup(p_shard: VoxelShard, p_team: int = 0) -> void:
 	beam_mesh.visible = false
 	add_child(beam_mesh)
 
+	health = Health.new(300, 5)
+	health.died.connect(_on_died)
+	respawn_point = position
+
 func _make_beam() -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var m := CylinderMesh.new()
@@ -83,6 +94,12 @@ func order_beam_gather(world_pos: Vector3) -> void:
 	target_position = world_pos
 
 func _physics_process(delta: float) -> void:
+	if not alive:
+		# Down: count down to respawn at the Keep/respawn point.
+		_respawn_timer -= delta
+		if _respawn_timer <= 0.0:
+			_respawn()
+		return
 	var ground_y: float = float(shard.get_height(int(floor(position.x)), int(floor(position.z))))
 	var on_ground: bool = position.y <= ground_y + 0.05
 
@@ -169,3 +186,26 @@ func deposit_at_keep() -> int:
 	cargo = 0
 	cargo_changed.emit(cargo, CARGO_CAPACITY)
 	return deposited
+
+func _on_died() -> void:
+	if not alive:
+		return
+	alive = false
+	beaming = false
+	has_target = false
+	beam_mesh.visible = false
+	_respawn_timer = RESPAWN_TIME
+	anim.mode = SillyPhysics.Mode.TUMBLE
+	if rig != null:
+		rig.visible = false
+	commander_died.emit()
+
+func _respawn() -> void:
+	alive = true
+	health.heal(health.max_hp)
+	position = respawn_point
+	velocity = Vector3.ZERO
+	if rig != null:
+		rig.visible = true
+	anim.mode = SillyPhysics.Mode.IDLE
+	commander_respawned.emit()

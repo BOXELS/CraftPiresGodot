@@ -10,6 +10,10 @@ var _units: UnitManager
 var _buildings: BuildingsManager
 var _depot: StorageDepot
 var _world: WorldBuilder
+var _fog: FogOfWar
+var _territory: Territory
+var _combat: CombatManager
+var _age: AgeManager
 var _hud_label: Label
 var _place_cooldown: float = 0.0
 
@@ -111,6 +115,27 @@ func _show_title() -> void:
 	add_child(_buildings)
 	_buildings.setup(world.shard)
 
+	# Phase 6: fog of war + territory claim for the player civ.
+	_fog = FogOfWar.new(&"player")
+	_territory = Territory.new(&"player")
+	_buildings.site_completed_claim.connect(_on_building_claim)
+
+	# Phase 7: combat. A couple of player soldiers guard near spawn; a small
+	# enemy force lurks to the north so first contact happens if you wander.
+	_combat = CombatManager.new()
+	_combat.name = "Combat"
+	add_child(_combat)
+	_combat.setup(world.shard)
+	for i in 2:
+		_combat.spawn_soldier(Vector3(cx - 2.0, gy, cz + 1.0 + float(i)), 0, &"player", "stone")
+	for i in 3:
+		_combat.spawn_soldier(Vector3(cx - 20.0 + float(i) * 1.5, 0, cz - 20.0), 1, &"enemy", "wood")
+	_commander.add_to_group("combatants")
+
+	# Phase 8: age progression. Buildings that complete feed the age gates.
+	_age = AgeManager.new(&"player")
+	_age.age_advanced.connect(_on_age_advanced)
+
 	_camera.focus_on(_commander.position)
 
 	# Optional: --screenshot=<path> frames the whole map and saves a PNG, then
@@ -140,10 +165,19 @@ func _show_title() -> void:
 		for f in 600:
 			await get_tree().physics_frame
 
+	# Optional: --combat-demo throws player and enemy squads together for a
+	# melee screenshot for the Phase 7 visual check.
+	if OS.get_cmdline_user_args().has("--combat-demo"):
+		for f in 240:
+			await get_tree().physics_frame
+		_frame_at(Vector3(cx - 10, 0, cz - 10), 30.0)
+
 	var shot_path: String = _get_flag_arg("--screenshot=")
 	if not shot_path.is_empty():
 		if OS.get_cmdline_user_args().has("--quarry-demo"):
 			_frame_at(Vector3(58, 0, 74), 34.0)
+		elif OS.get_cmdline_user_args().has("--combat-demo"):
+			pass  # framed above
 		else:
 			_frame_overview(world)
 		await RenderingServer.frame_post_draw
@@ -185,6 +219,72 @@ func _unhandled_input(event: InputEvent) -> void:
 		var k := event as InputEventKey
 		if k.pressed and not k.echo and k.keycode == KEY_B:
 			_place_house()
+		elif k.pressed and not k.echo and k.keycode == KEY_S:
+			_spawn_soldier()
+		elif k.pressed and not k.echo and k.keycode == KEY_T:
+			_research_next()
+		elif k.pressed and not k.echo and k.keycode == KEY_F5:
+			_save()
+		elif k.pressed and not k.echo and k.keycode == KEY_F9:
+			_load()
+
+func _spawn_soldier() -> void:
+	# Train a soldier near the commander (S key).
+	if _combat == null or _commander == null:
+		return
+	var fwd: Vector3 = -_commander.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length() < 0.1:
+		fwd = Vector3(1, 0, 0)
+	var spot: Vector3 = _commander.position + fwd.normalized() * 3.0
+	var gy: int = _world.shard.get_height(int(spot.x), int(spot.z))
+	_combat.spawn_soldier(Vector3(spot.x, gy, spot.z), 0, &"player", "stone")
+
+func _research_next() -> void:
+	# T researches the first affordable tech in the current age.
+	if _age == null:
+		return
+	for tid in _age.available_techs():
+		if _age.research(tid, _units):
+			print("[main] researched %s" % tid)
+			return
+	print("[main] no affordable tech right now")
+
+func _on_building_claim(kind: StringName, tile: Vector3i) -> void:
+	if _territory != null:
+		_territory.add_claim(tile.x, tile.z, kind)
+	if _age != null:
+		_age.record_building(kind)
+
+func _on_age_advanced(new_age: int) -> void:
+	print("[main] advanced to age %d" % new_age)
+
+func _save() -> void:
+	if _world == null or _units == null:
+		return
+	var seed_now: int = int(_get_flag_arg("--seed=")) if not _get_flag_arg("--seed=").is_empty() else 12345
+	if SaveGame.save(_world, _units, seed_now):
+		print("[main] saved game")
+
+func _load() -> void:
+	var data: Dictionary = SaveGame.load_save()
+	if data.is_empty():
+		print("[main] no save to load")
+		return
+	SaveGame.apply_resources(data)
+	print("[main] loaded resources from save")
+
+func _process(_delta: float) -> void:
+	# Fog reveal from living units each frame (cheap enough at this scale).
+	if _fog == null or _units == null:
+		return
+	var sources: Array = []
+	if is_instance_valid(_commander):
+		sources.append({"x": int(_commander.position.x), "z": int(_commander.position.z), "radius": 10})
+	for p in _units.peasants:
+		if is_instance_valid(p):
+			sources.append({"x": int(p.position.x), "z": int(p.position.z), "radius": 7})
+	_fog.refresh_visibility(sources)
 
 func _dig_at(pos: Vector3) -> void:
 	# Right-click digs the clicked column (mine/harvest/dig terrain live).
@@ -193,7 +293,6 @@ func _dig_at(pos: Vector3) -> void:
 	_world.dig(int(pos.x), int(pos.z), 1)
 
 func _raise_at(pos: Vector3) -> void:
-	# Shift+Right-click raises the clicked column with dirt.
 	if _world == null:
 		return
 	_world.raise(int(pos.x), int(pos.z), 1, 2)
@@ -265,4 +364,4 @@ func _update_hud() -> void:
 	var cargo_text := ""
 	if _commander != null:
 		cargo_text = " · cargo %d/%d" % [_commander.cargo, Commander.CARGO_CAPACITY]
-	_hud_label.text = "CraftPires — LMB move · Shift+LMB beam · RMB peasant-dig · Ctrl+RMB carve · Shift+RMB raise · B build" + cargo_text
+	_hud_label.text = "CraftPires — LMB move · Shift+LMB beam · RMB dig · B build · S soldier · F5/F9 save/load" + cargo_text

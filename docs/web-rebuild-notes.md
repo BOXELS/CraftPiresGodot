@@ -240,3 +240,71 @@ during the rebuild:_
   stepped pit into the plains.
 - Next: Phase 6 — fog of war, territory claim, save/load, collapse physics
   (unsupported voxels fall). Then Phase 7 combat.
+
+### 2026-07-31 — Phase 6: fog, claim, save/load, collapse
+
+- **Collapse physics** (`world_builder.gd`): after a dig, `settle()` flood-settles
+  a region — a block floating with air beneath and no grounded lateral neighbor
+  drops one step per pass until nothing moves. Wired into `edit_voxel` so mined
+  overhangs fall automatically. Fixed a read-after-zero bug (capture material
+  before clearing the block).
+- **Save/load** (`scripts/core/save_game.gd`): serializes shard columns+heights,
+  per-civ resources, and peasant state (pos/stage/tool) to `user://savegame.json`.
+  `VoxelShard.restore()` rebuilds columns from a save. F5 save / F9 load in-game.
+  Terraform edits survive the round-trip.
+- **Fog of war** (`scripts/core/fog_of_war.gd`): per-civ visibility grid —
+  UNEXPLORED → EXPLORED (remembered, dim) → VISIBLE. Units/buildings reveal a
+  radius; `refresh_visibility()` demotes stale VISIBLE to EXPLORED each tick.
+  Live in main: commander (r10) + peasants (r7) reveal around themselves.
+- **Territory claim** (`scripts/core/territory.gd`): buildings stamp a claim
+  radius (keep 18, watchtower 12, storehouse 8, house 6); claim area grows as
+  buildings complete. `BuildingsManager` emits `site_completed_claim` on finish.
+- Verified: 4 new scenarios green — `collapse` (floating cap falls, no gap
+  remains), `saveload` (terrain edit + resources + peasants round-trip), `fog`
+  (reveal/demote/explore lifecycle), `claim` (radius stamping, keep widest).
+  Full **20-scenario suite passing**, zero warnings, clean boot with fog+claim
+  wired into the live game.
+- Next: Phase 7 — combat, military units, siege, commander respawn.
+
+### 2026-07-31 — Phase 7: combat, military, siege, respawn
+
+- `scripts/combat/health.gd`: HP + armor component. `take_damage` applies
+  armor (flat, min 1), emits damaged/died. Used by soldiers, commander, buildings.
+- `scripts/combat/soldier.gd`: military unit on the procedural rig. Combat brain
+  — guard a post, auto-acquire nearest hostile in aggro range (9), chase, attack
+  with cooldown at melee range (1.6). Tier outfits (wood/stone) + spear prop.
+  Death → tumble, fade, free. Target scan via the `combatants` group.
+- `scripts/combat/combat_manager.gd`: spawns soldiers per civ, registers
+  combatants, applies spatial-hash separation so melee doesn't stack, and routes
+  siege damage to buildings via `attack_building` (building Health in site meta).
+- `commander.gd`: Health(300,5) + death/respawn. Lethal damage downs the
+  commander (rig hidden, sim holds), respawns at `respawn_point` full HP after
+  8s. Commander added to `combatants` so enemies target him.
+- `main.gd`: 2 player soldiers guard near spawn, 3 enemy soldiers lurk north;
+  **S** trains a soldier near the commander. HUD updated.
+- Verified: 3 new scenarios green — `combat` (two soldiers fight, weaker dies,
+  armor reduces damage), `siege` (damage routes to building Health, destroys at
+  0), `respawn` (commander dies, hides, respawns full at the point). Full
+  **23-scenario suite passing**, zero warnings. Combat-demo render shows squads.
+- Next: Phase 8 — age progression and tech trees (advance peasants' stages via
+  ages, unlock tools/buildings per age).
+
+### 2026-07-31 — Phase 8: age progression + tech trees
+
+- `scripts/tech/tech_tree.gd`: 3-age spine (Primitive/Metal/Gunpowder-Crystal)
+  per `docs/tech-progression.md`. Age-advance gates (resources + a completed
+  building: Metal needs barracks + 500 food/300 stone; Gunpowder needs castle +
+  more). Per-age techs with costs, unlocks, and optional peasant-stage bumps —
+  masonry/agriculture/woodcrafting/torchlight (A1), fortification/metalworking/
+  wheel (A2), gunpowder/crystal_tech (A3).
+- `scripts/tech/age_manager.gd`: tracks current age, researched techs, unlocked
+  content, completed buildings. `research()` spends through Events, unlocks
+  content, and bumps all the civ's peasants for stage-granting techs.
+  `advance_age()` is gated by resources AND the required building.
+- `main.gd`: `AgeManager` wired — completed buildings record toward age gates;
+  **T** researches the first affordable tech in the current age.
+- Verified: 2 new scenarios green — `research` (gating by resources/age, unlock,
+  spend, no double-research) and `ageup` (advance blocked without barracks,
+  wheel bumps peasant to WHEEL stage, carry 50). Full **26-scenario suite
+  passing**, zero warnings, clean boot with age system wired live.
+- Next: Phase 9 — water/mud/fire/gravity creativity systems. Then Phase 10 AI.

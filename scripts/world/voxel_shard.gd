@@ -29,9 +29,6 @@ static func index(x: int, z: int) -> int:
 func generate(new_seed: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = new_seed
-
-	# Region mask: very low frequency so flat / hilly / mountainous areas form
-	# large contiguous zones instead of per-tile variation.
 	var region := FastNoiseLite.new()
 	region.seed = new_seed
 	region.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -98,6 +95,18 @@ func get_material(x: int, y: int, z: int) -> int:
 	if x < 0 or x >= SIZE_X or z < 0 or z >= SIZE_Z or y < 0 or y >= MAX_Y:
 		return 0
 	return _columns[index(x, z)][y]
+
+## Restore from a saved game: overwrite columns + heights directly (Phase 6).
+func restore(heights_arr: Array, columns_arr: Array) -> void:
+	for i in mini(heights_arr.size(), SIZE_X * SIZE_Z):
+		heights[i] = int(heights_arr[i])
+	for i in mini(columns_arr.size(), SIZE_X * SIZE_Z):
+		var col := PackedByteArray()
+		col.resize(MAX_Y)
+		var src: Array = columns_arr[i]
+		for y in mini(src.size(), MAX_Y):
+			col[y] = int(src[y])
+		_columns[i] = col
 
 func get_height(x: int, z: int) -> int:
 	if x < 0 or x >= SIZE_X or z < 0 or z >= SIZE_Z:

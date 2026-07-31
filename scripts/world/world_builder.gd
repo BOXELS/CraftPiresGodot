@@ -60,6 +60,9 @@ func edit_voxel(x: int, z: int, delta: int, material: int = 3) -> void:
 		for i in range(h, mini(h + delta, VoxelShard.MAX_Y)):
 			shard.set_material(x, i, z, material)
 	_remesh_around(x, z)
+	if delta < 0:
+		# Digging can leave overhangs unsupported — settle them.
+		settle(x, z, 1)
 
 func dig(x: int, z: int, amount: int = 1) -> void:
 	edit_voxel(x, z, -amount)
@@ -97,6 +100,61 @@ func _rebuild_chunk(cx: int, cz: int) -> void:
 	_chunks_node.add_child(mi)
 	_chunks_node.move_child(mi, idx)
 	_chunks[k] = mi
+
+## Collapse physics (Phase 6): after digging, unsupported voxels are detected.
+## A block is supported if it sits on the column below reaching the ground, or
+## horizontally adjacent to a supported block. We flood-fill support from the
+## ground up per column neighborhood; anything floating collapses (removed).
+## Returns number of blocks that collapsed.
+func collapse_around(x: int, z: int, radius: int = 1) -> int:
+	var collapsed: int = 0
+	for dx in range(-radius, radius + 1):
+		for dz in range(-radius, radius + 1):
+			collapsed += _collapse_column(x + dx, z + dz)
+	return collapsed
+
+func _collapse_column(x: int, z: int) -> int:
+	if x < 0 or x >= VoxelShard.SIZE_X or z < 0 or z >= VoxelShard.SIZE_Z:
+		return 0
+	# Scan for floating runs: a solid block with air directly beneath it and no
+	# solid lateral neighbor at its level. Drop the run down by one if there's
+	# a gap; repeat handled by caller loops. Simple gravity settle.
+	var fell: int = 0
+	var h: int = shard.get_height(x, z)
+	for y in range(1, h):
+		var m: int = shard.get_material(x, y, z)
+		if m != 0 and shard.get_material(x, y - 1, z) == 0:
+			# Floating block at y: check lateral support at this level.
+			if _has_lateral_support(x, y, z):
+				continue
+			# Drop it one step into the gap below.
+			shard.set_material(x, y, z, 0)
+			shard.set_material(x, y - 1, z, m)
+			fell += 1
+	if fell > 0:
+		_remesh_around(x, z)
+	return fell
+
+func _has_lateral_support(x: int, y: int, z: int) -> bool:
+	# Supported if any horizontal neighbor at the same level is solid AND that
+	# neighbor is itself grounded (block below it solid).
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var nx: int = x + d.x
+		var nz: int = z + d.y
+		if shard.get_material(nx, y, nz) != 0 and shard.get_material(nx, y - 1, nz) != 0:
+			return true
+	return false
+
+## Settle a region repeatedly until nothing else falls (multi-block overhangs
+## take a few passes). Returns total blocks moved.
+func settle(x: int, z: int, radius: int = 1, max_passes: int = 8) -> int:
+	var total: int = 0
+	for _i in max_passes:
+		var n: int = collapse_around(x, z, radius)
+		total += n
+		if n == 0:
+			break
+	return total
 
 func _add_lighting() -> void:
 	var sun := DirectionalLight3D.new()

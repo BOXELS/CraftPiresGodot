@@ -8,6 +8,8 @@ var shard: VoxelShard
 var sites: Array = []          # active ConstructionSite
 var completed: Array = []      # completed building kinds
 
+signal site_completed_claim(kind: StringName, tile: Vector3i)
+
 func setup(p_shard: VoxelShard) -> void:
 	shard = p_shard
 
@@ -33,6 +35,8 @@ func _on_tick(_i: int) -> void:
 func _on_site_completed(kind: StringName, site: ConstructionSite) -> void:
 	completed.append(kind)
 	sites.erase(site)
+	var tile := Vector3i(int(site.position.x), 0, int(site.position.z))
+	site_completed_claim.emit(kind, tile)
 
 func active_site_needing_material(civ: StringName) -> ConstructionSite:
 	for s in sites:

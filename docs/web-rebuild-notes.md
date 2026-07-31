@@ -308,3 +308,27 @@ during the rebuild:_
   wheel bumps peasant to WHEEL stage, carry 50). Full **26-scenario suite
   passing**, zero warnings, clean boot with age system wired live.
 - Next: Phase 9 — water/mud/fire/gravity creativity systems. Then Phase 10 AI.
+
+### 2026-07-31 — Phase 9: water, mud, fire (creativity systems)
+
+- `scripts/world/water_sim.gd`: deterministic cellular water overlay (level 0-7
+  per column, separate from terrain materials). `step()` flows water to the
+  lowest lateral neighbor and equalizes across flat ground, budgeted per step;
+  `set/add/drain` mutate through the grid (multiplayer-safe). Fixed a float-
+  division bug decoding the flat index.
+- `scripts/world/material_interactions.gd`: combination rules — water on
+  dirt/grass = mud (0.55× move), deeper water wading slows more; flammable
+  materials; water extinguishes fire.
+- `scripts/world/fire_sim.gd`: cellular fire spread on the grid. `ignite()` on
+  flammable cells; `step()` spreads to flammable neighbors (seeded rng for
+  determinism), decrements burn time, consumes burned grass → dirt, water puts
+  it out.
+- Verified: 3 new scenarios green — `water` (flows downhill to a lower
+  neighbor, drain removes), `mud` (mud/wade slow multipliers by depth+material),
+  `fire` (ignite/spread/persist, water extinguishes all). Full **29-scenario
+  suite passing**, zero warnings.
+- Note: water/fire are sim-layer systems (grid truth) but not yet rendered as
+  meshes in the live game — visual pass for water/flow/fire comes with the Phase
+  11 polish pass; the deterministic sim is the foundation that had to land first
+  per the physics roadmap ground rules.
+- Next: Phase 10 — AI opponents + prestige/win conditions.

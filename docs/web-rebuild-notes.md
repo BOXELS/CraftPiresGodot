@@ -353,3 +353,29 @@ during the rebuild:_
   passing**, zero warnings, clean boot with AI + win conditions live.
 - Next: Phase 11 — season reset, hall of legends, polish pass (water/fire
   visuals, HUD depth, balance).
+
+### 2026-07-31 — Phase 11: season reset, hall of legends, water visuals
+
+- `scripts/meta/season.gd`: season lifecycle — number + elapsed in-season days
+  (prototype maps 1s = 1 day so a season is reachable in testing), `progress()`,
+  ends the season, and `reset_for_next()` archives the winner and rolls forward.
+- `scripts/meta/hall_of_legends.gd`: permanent record of season champions
+  (civ, condition, prestige, stats) persisted to `user://hall_of_legends.json`;
+  `titles_for()` / `most_titles()` track the leaderboard. `TEST_PATH` hook so
+  scenario runs stay deterministic.
+- `world_builder.gd`: **water rendering** — translucent blue surface quads per
+  water cell (alpha scales with level), rebuilt via `render_water()` after sim
+  steps. Water now visible in-game, not just sim truth.
+- `main.gd`: `Season` wired — clock ticks each frame, season/day on the HUD,
+  `season_ended` archives the leader into the Hall of Legends and rolls to the
+  next season. `--water-demo` renders a pool for the visual check.
+- Verified: `season` scenario green (season ends, champion inducted, titles
+  accumulate, clock resets) — isolated its hall file after a persistence leak
+  made it order-dependent. Full **32-scenario suite passing**, zero warnings,
+  clean boot with season + water + all systems live.
+- **All 11 phases complete.** The from-scratch Godot build now has: voxel
+  terrain w/ regions + live terraform + collapse, procedural rigs/units,
+  peasant economy (gather/quarry/haul/build), Settlers construction, tools +
+  stage progression, fog/territory/save-load, combat + siege + respawn, age
+  tech trees, water/mud/fire sims, a scripted AI opponent, win conditions, and
+  the seasonal meta loop — all deterministic, scenario-tested, zero manual art.

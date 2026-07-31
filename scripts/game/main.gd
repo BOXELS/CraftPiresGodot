@@ -16,6 +16,7 @@ var _combat: CombatManager
 var _age: AgeManager
 var _ai: AIOpponent
 var _wincon: WinConditions
+var _season: Season
 var _hud_label: Label
 var _place_cooldown: float = 0.0
 
@@ -149,6 +150,10 @@ func _show_title() -> void:
 	_wincon.register(&"enemy")
 	_wincon.civ_won.connect(_on_civ_won)
 
+	# Phase 11: season lifecycle + hall of legends.
+	_season = Season.new()
+	_season.season_ended.connect(_on_season_ended)
+
 	_camera.focus_on(_commander.position)
 
 	# Optional: --screenshot=<path> frames the whole map and saves a PNG, then
@@ -185,11 +190,22 @@ func _show_title() -> void:
 			await get_tree().physics_frame
 		_frame_at(Vector3(cx - 10, 0, cz - 10), 30.0)
 
+	# Optional: --water-demo pours a pool on the plains, steps the sim, renders
+	# it, and screenshots the translucent water for the Phase 11 visual check.
+	if OS.get_cmdline_user_args().has("--water-demo"):
+		for i in range(56, 66):
+			for j in range(56, 66):
+				_world.water.set_water(i, j, 5)
+		for s in 12:
+			_world.water.step(0, 0, VoxelShard.SIZE_X, VoxelShard.SIZE_Z)
+		_world.render_water()
+		_frame_at(Vector3(60, 0, 60), 32.0)
+
 	var shot_path: String = _get_flag_arg("--screenshot=")
 	if not shot_path.is_empty():
 		if OS.get_cmdline_user_args().has("--quarry-demo"):
 			_frame_at(Vector3(58, 0, 74), 34.0)
-		elif OS.get_cmdline_user_args().has("--combat-demo"):
+		elif OS.get_cmdline_user_args().has("--combat-demo") or OS.get_cmdline_user_args().has("--water-demo"):
 			pass  # framed above
 		else:
 			_frame_overview(world)
@@ -306,11 +322,23 @@ func _process(_delta: float) -> void:
 		var defeated: StringName = _wincon.check_conquest(&"enemy", true, _combat.soldiers_for(&"enemy").size())
 		if defeated != &"":
 			_on_civ_won(&"player", WinConditions.CONQUEST)
+	# Season clock + HUD refresh.
+	if _season != null:
+		_season.tick(_delta)
+		if Engine.get_process_frames() % 30 == 0:
+			_update_hud()
 
 func _on_civ_won(civ: StringName, condition: StringName) -> void:
 	if _hud_label != null:
 		_hud_label.text = "VICTORY — %s wins by %s!" % [civ, condition]
 	print("[main] %s wins by %s" % [civ, condition])
+
+func _on_season_ended(n: int) -> void:
+	# Archive the current leader and roll the season.
+	var leader: StringName = &"player"
+	var prestige: int = _wincon.prestige_score(leader) if _wincon != null else 0
+	_season.reset_for_next(leader, WinConditions.PRESTIGE, prestige, {})
+	print("[main] season %d ended -> season %d begins (champion archived)" % [n, _season.season_number])
 
 func _dig_at(pos: Vector3) -> void:
 	# Right-click digs the clicked column (mine/harvest/dig terrain live).
@@ -390,4 +418,7 @@ func _update_hud() -> void:
 	var cargo_text := ""
 	if _commander != null:
 		cargo_text = " · cargo %d/%d" % [_commander.cargo, Commander.CARGO_CAPACITY]
-	_hud_label.text = "CraftPires — LMB move · Shift+LMB beam · RMB dig · B build · S soldier · F5/F9 save/load" + cargo_text
+	var season_text := ""
+	if _season != null:
+		season_text = " · S%d d%d" % [_season.season_number, int(_season.elapsed_days)]
+	_hud_label.text = "CraftPires — LMB move · Shift+LMB beam · RMB dig · B build · S soldier · T tech · F5/F9" + cargo_text + season_text

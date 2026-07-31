@@ -7,15 +7,22 @@ const CHUNKS_X: int = int(VoxelShard.SIZE_X / float(LayerMesher.CHUNK_SIZE))
 const CHUNKS_Z: int = int(VoxelShard.SIZE_Z / float(LayerMesher.CHUNK_SIZE))
 
 var shard: VoxelShard
+var water: WaterSim
 var _mesher := LayerMesher.new()
 var _material: StandardMaterial3D
 var _chunks_node: Node3D
 var _chunks: Dictionary = {}   # "cx,cz" -> MeshInstance3D
+var _water_node: Node3D
+var _water_meshes: Dictionary = {}  # "cx,cz" -> MeshInstance3D (translucent overlay)
 
 func build(new_seed: int) -> void:
 	shard = VoxelShard.new()
 	shard.generate(new_seed)
+	water = WaterSim.new(shard)
 	_mesh_all_chunks()
+	_water_node = Node3D.new()
+	_water_node.name = "Water"
+	add_child(_water_node)
 	_add_lighting()
 
 func _mesh_all_chunks() -> void:
@@ -155,6 +162,61 @@ func settle(x: int, z: int, radius: int = 1, max_passes: int = 8) -> int:
 		if n == 0:
 			break
 	return total
+
+## Render the current water overlay as translucent surface quads. Rebuilt on
+## demand after water sim steps (cheap at this scale; region-sleep later).
+func render_water() -> void:
+	if _water_node == null or water == null:
+		return
+	for c in _water_node.get_children():
+		c.queue_free()
+	var mat := _water_material()
+	var csize: int = LayerMesher.CHUNK_SIZE
+	for cx in CHUNKS_X:
+		for cz in CHUNKS_Z:
+			var st := SurfaceTool.new()
+			st.begin(Mesh.PRIMITIVE_TRIANGLES)
+			var any: bool = false
+			for lx in csize:
+				for lz in csize:
+					var x: int = cx * csize + lx
+					var z: int = cz * csize + lz
+					var lvl: int = water.level(x, z)
+					if lvl <= 0:
+						continue
+					any = true
+					var h: float = float(shard.get_height(x, z)) + 0.4 + float(lvl) * 0.06
+					_add_water_quad(st, x, z, h, lvl)
+			if any:
+				st.generate_normals()
+				var mi := MeshInstance3D.new()
+				mi.mesh = st.commit()
+				mi.material_override = mat
+				_water_node.add_child(mi)
+
+func _add_water_quad(st: SurfaceTool, x: int, z: int, y: float, lvl: int) -> void:
+	var a: float = clampf(0.3 + float(lvl) * 0.06, 0.3, 0.75)
+	var col := Color(0.25, 0.5, 0.85, a)
+	st.set_color(col)
+	st.set_normal(Vector3.UP)
+	var x0: float = x + 0.05
+	var x1: float = x + 0.95
+	var z0: float = z + 0.05
+	var z1: float = z + 0.95
+	st.add_vertex(Vector3(x0, y, z0))
+	st.add_vertex(Vector3(x1, y, z0))
+	st.add_vertex(Vector3(x1, y, z1))
+	st.add_vertex(Vector3(x0, y, z0))
+	st.add_vertex(Vector3(x1, y, z1))
+	st.add_vertex(Vector3(x0, y, z1))
+
+func _water_material() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.roughness = 0.2
+	m.metallic = 0.1
+	return m
 
 func _add_lighting() -> void:
 	var sun := DirectionalLight3D.new()

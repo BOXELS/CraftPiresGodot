@@ -67,6 +67,14 @@ func order_build(site: ConstructionSite) -> void:
 func order_idle() -> void:
 	brain.set_order(&"idle", {})
 
+func order_hunt(animals: AnimalField, index: int) -> void:
+	# Chase and kill wildlife for food.
+	brain.set_order(&"hunt", {"animals": animals, "index": index, "pos": animals.animal_pos(index)})
+
+func order_pick_pile(piles: PileField, index: int) -> void:
+	# Collect a ground pile and haul it to storage.
+	brain.set_order(&"pickpile", {"piles": piles, "index": index, "pos": piles.pile_pos(index), "kind": piles.pile_kind(index)})
+
 # --- Stage / tools (Phase 5) -------------------------------------------------
 
 func set_stage(new_stage: int) -> void:

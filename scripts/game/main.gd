@@ -21,6 +21,8 @@ var _menu: MenuController
 var _main_menu: MainMenu
 var _game_started: bool = false
 var _resources: ResourceNodes
+var _animals: AnimalField
+var _piles: PileField
 var _selection: SelectionManager
 var _population: Population
 var _sel_box: SelectionBox
@@ -84,6 +86,18 @@ func _show_title() -> void:
 	add_child(resources)
 	resources.setup(world.shard)
 	_resources = resources
+
+	# Wildlife to hunt + ground piles for dropped resources.
+	_animals = AnimalField.new()
+	_animals.name = "Animals"
+	add_child(_animals)
+	_animals.setup(world.shard)
+	_animals.scatter(Sim.rng, 24)
+	_piles = PileField.new()
+	_piles.name = "Piles"
+	add_child(_piles)
+	_piles.setup(world.shard)
+	_animals.animal_killed.connect(func(pos: Vector3, food: int): _piles.drop(pos, &"food", food))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 777
 	resources.scatter(rng, 120)
@@ -403,9 +417,21 @@ func _issue_context_command(pos: Vector3, screen_pos: Vector2) -> void:
 		else:
 			_commander.order_move(pos)
 		return
-	# Peasants: build site > gather tree > dig/mine ground.
+	# Peasants: hunt prey > collect pile > build site > gather tree > dig/mine.
 	var peasants: Array = _selection.peasants()
 	if not peasants.is_empty():
+		if _animals != null:
+			var prey: int = _animals.nearest_animal(pos, 2.5)
+			if prey >= 0:
+				for p in peasants:
+					p.order_hunt(_animals, prey)
+				return
+		if _piles != null:
+			var pile: int = _piles.nearest_pile(pos, 2.5)
+			if pile >= 0:
+				for p in peasants:
+					p.order_pick_pile(_piles, pile)
+				return
 		var site: ConstructionSite = _buildings.site_near(pos, 4.0) if _buildings != null else null
 		if site != null:
 			for p in peasants:

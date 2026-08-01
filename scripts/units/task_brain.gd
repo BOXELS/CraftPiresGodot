@@ -40,6 +40,10 @@ func tick(delta: float) -> void:
 			_tick_haul()
 		&"build":
 			_tick_build()
+		&"hunt":
+			_tick_hunt()
+		&"pickpile":
+			_tick_pickpile()
 		&"idle":
 			state = &"idle"
 
@@ -61,6 +65,12 @@ func _enter() -> void:
 		&"build":
 			state = &"to_site"
 			unit.move_to(_site_point())
+		&"hunt":
+			state = &"to_prey"
+			unit.move_to(order_data.get("pos", unit.position))
+		&"pickpile":
+			state = &"to_pile"
+			unit.move_to(order_data.get("pos", unit.position))
 		_:
 			state = &"idle"
 
@@ -199,7 +209,7 @@ func _tick_build() -> void:
 
 func _track_stall(delta: float) -> void:
 	# Bail and re-path if the unit hasn't moved for a while mid-order.
-	if state in [&"moving", &"to_node", &"to_drop", &"to_depot", &"to_site", &"to_site_haul", &"to_dig", &"to_drop_dig"] and unit.has_move_target:
+	if state in [&"moving", &"to_node", &"to_drop", &"to_depot", &"to_site", &"to_site_haul", &"to_dig", &"to_drop_dig", &"to_prey", &"to_pile", &"to_drop_pile"] and unit.has_move_target:
 		var moved: float = unit.position.distance_to(_last_pos)
 		if moved < 0.05:
 			_stall_time += delta
@@ -209,3 +219,73 @@ func _track_stall(delta: float) -> void:
 		else:
 			_stall_time = 0.0
 	_last_pos = unit.position
+
+const HUNT_TIME: float = 1.0        # seconds per attack swing
+
+func _tick_hunt() -> void:
+	var animals: AnimalField = order_data.get("animals")
+	var idx: int = int(order_data.get("index", -1))
+	if animals == null or idx < 0:
+		set_order(&"idle", {})
+		return
+	match state:
+		&"to_prey":
+			if not animals.is_alive(idx):
+				# Prey already gone — collect the pile it dropped, if any.
+				_go_idle_or_pile()
+				return
+			# Chase the moving prey.
+			unit.move_to(animals.animal_pos(idx))
+			if unit.position.distance_to(animals.animal_pos(idx)) < 1.2:
+				state = &"attacking"
+				_state_time = 0.0
+		&"attacking":
+			if not animals.is_alive(idx):
+				_go_idle_or_pile()
+				return
+			if _state_time >= HUNT_TIME / maxf(unit.work_speed(), 0.1):
+				_state_time = 0.0
+				var food: int = animals.damage(idx, 1)
+				if food > 0:
+					# Killed: haul the food home.
+					unit.pick_up(&"food", mini(food, unit.carry_capacity()))
+					state = &"to_drop_hunt"
+					unit.move_to(_drop_point())
+		&"to_drop_hunt":
+			if not unit.has_move_target:
+				var n: int = unit.drop_off()
+				if n > 0:
+					Events.add_resource(unit.civ_id, &"food", n)
+				set_order(&"idle", {})
+
+func _tick_pickpile() -> void:
+	var piles: PileField = order_data.get("piles")
+	var idx: int = int(order_data.get("index", -1))
+	if piles == null or idx < 0 or piles.pile_amount(idx) <= 0:
+		set_order(&"idle", {})
+		return
+	match state:
+		&"to_pile":
+			if not unit.has_move_target:
+				var got: int = piles.take(idx, unit.carry_capacity())
+				if got <= 0:
+					set_order(&"idle", {})
+					return
+				unit.pick_up(piles.pile_kind(idx), got)
+				state = &"to_drop_pile"
+				unit.move_to(_drop_point())
+		&"to_drop_pile":
+			if not unit.has_move_target:
+				var kind: StringName = order_data.get("kind", &"wood")
+				var n: int = unit.drop_off()
+				if n > 0:
+					Events.add_resource(unit.civ_id, kind, n)
+				# Standing order: keep collecting while the pile lasts.
+				if piles.pile_amount(idx) > 0:
+					state = &"to_pile"
+					unit.move_to(piles.pile_pos(idx))
+				else:
+					set_order(&"idle", {})
+
+func _go_idle_or_pile() -> void:
+	set_order(&"idle", {})

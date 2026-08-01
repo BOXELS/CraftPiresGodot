@@ -107,7 +107,13 @@ func carry_capacity() -> int:
 	return PeasantStage.carry(stage)
 
 func move_speed() -> float:
-	return PeasantStage.speed(stage)
+	var base: float = PeasantStage.speed(stage)
+	# Terrain modifiers: dirt roads speed up, mud/water slow down.
+	var mat: int = shard.surface_material(int(floor(position.x)), int(floor(position.z))) if shard != null else 0
+	var water_lvl: int = 0
+	if world != null and world.water != null:
+		water_lvl = world.water.level(int(floor(position.x)), int(floor(position.z)))
+	return base * MaterialInteractions.move_multiplier(water_lvl, mat)
 
 func move_to(pos: Vector3) -> void:
 	# Low-level locomotion used by the brain; not an order itself.

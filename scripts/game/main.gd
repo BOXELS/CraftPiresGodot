@@ -27,6 +27,7 @@ var _selection: SelectionManager
 var _population: Population
 var _sel_box: SelectionBox
 var _lmb_down: bool = false
+var _pave_last: Vector2i = Vector2i(-1, -1)   # last cell painted in a road stroke
 var _hud_label: Label
 var _place_cooldown: float = 0.0
 
@@ -132,6 +133,10 @@ func _show_title() -> void:
 	# Starting storage so early construction is possible.
 	Events.add_resource(&"player", &"wood", 80)
 	Events.add_resource(&"player", &"stone", 40)
+	Events.add_resource(&"player", &"food", 100)
+	# Improvement vs Three.js: seed enough dirt for early roads so the player
+	# isn't gated behind shovel dig before they can pave (dig still refills).
+	Events.add_resource(&"player", &"dirt", 40)
 	_depot = StorageDepot.new(&"player")
 
 	# Press B to place a house foundation near the commander; nearby peasants
@@ -316,19 +321,40 @@ func _unhandled_input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed:
-				_sel_box.begin(mb.position)
 				_lmb_down = true
+				# Armed place/pave/attack/terraform: consume immediately, no box-select.
+				if _menu != null and (_menu.pending_kind != &"" or _menu.pending_pave
+						or _menu.pending_attack_move or _menu.pending_terraform != &""):
+					var pos: Variant = _terrain_click(mb.position)
+					if pos != null:
+						if _menu.pending_pave:
+							_pave_last = Vector2i(int(pos.x), int(pos.z))
+						_menu.handle_terrain_click(pos)
+					return
+				_sel_box.begin(mb.position)
 			else:
 				_lmb_down = false
+				_pave_last = Vector2i(-1, -1)
 				_on_left_release(mb.position)
 		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
+			# RMB cancels armed place/pave (cleaner than only Esc).
+			if _menu != null and (_menu.pending_kind != &"" or _menu.pending_pave
+					or _menu.pending_attack_move or _menu.pending_terraform != &""):
+				_menu.cancel_pending()
+				_on_menu_feedback("Placement cancelled")
+				return
 			_on_right_click(mb.position)
 	elif event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
 		# Track the radial wedge while the open key is held.
 		if _menu != null and Input.is_action_pressed("radial_menu"):
 			_menu.track_radial(mm.position)
-		if _lmb_down and _sel_box.dragging:
+		# Drag-paint roads: Bresenham fill between last cell and current.
+		if _lmb_down and _menu != null and _menu.pending_pave:
+			var pos: Variant = _terrain_click(mm.position)
+			if pos != null:
+				_paint_road_stroke(Vector2i(int(pos.x), int(pos.z)))
+		elif _lmb_down and _sel_box.dragging:
 			_sel_box.update(mm.position)
 	elif event is InputEventKey:
 		var k := event as InputEventKey
@@ -356,12 +382,11 @@ func _unhandled_input(event: InputEvent) -> void:
 # --- AoE2 selection + context commands --------------------------------------
 
 func _on_left_release(screen_pos: Vector2) -> void:
-	# Menu layer gets first crack (armed placement / attack-move / terraform).
-	if _menu != null and (_menu.pending_kind != &"" or _menu.pending_attack_move or _menu.pending_terraform != &""):
-		var pos: Variant = _terrain_click(screen_pos)
-		if pos != null and _menu.handle_terrain_click(pos):
-			_sel_box.cancel()
-			return
+	# Menu layer already handled press for armed actions; skip box-select.
+	if _menu != null and (_menu.pending_kind != &"" or _menu.pending_pave
+			or _menu.pending_attack_move or _menu.pending_terraform != &""):
+		_sel_box.cancel()
+		return
 	if _sel_box.dragging and _sel_box.is_real_drag():
 		# Box select.
 		var rect: Rect2 = _sel_box.finish()
@@ -387,6 +412,41 @@ func _on_left_release(screen_pos: Vector2) -> void:
 		# Clicked empty terrain: clear selection (unless shift held).
 		if not Input.is_key_pressed(KEY_SHIFT):
 			_selection.clear()
+
+## Paint a Bresenham stroke of dirt road from the last painted cell to `cell`.
+func _paint_road_stroke(cell: Vector2i) -> void:
+	if _pave_last.x < 0:
+		_pave_last = cell
+		_menu.paint_road_at(Vector3(cell.x, 0, cell.y))
+		return
+	if cell == _pave_last:
+		return
+	for c in _line_cells(_pave_last.x, _pave_last.y, cell.x, cell.y):
+		_menu.paint_road_at(Vector3(c.x, 0, c.y))
+	_pave_last = cell
+
+## Inclusive Bresenham grid line (same as the Three.js MVP stroke painter).
+func _line_cells(x0: int, z0: int, x1: int, z1: int) -> Array:
+	var out: Array = []
+	var dx: int = absi(x1 - x0)
+	var sx: int = 1 if x0 < x1 else -1
+	var dz: int = absi(z1 - z0)
+	var sz: int = 1 if z0 < z1 else -1
+	var err: int = dx - dz
+	var x: int = x0
+	var z: int = z0
+	while true:
+		out.append(Vector2i(x, z))
+		if x == x1 and z == z1:
+			break
+		var e2: int = 2 * err
+		if e2 > -dz:
+			err -= dz
+			x += sx
+		if e2 < dx:
+			err += dx
+			z += sz
+	return out
 
 func _on_right_click(screen_pos: Vector2) -> void:
 	var pos: Variant = _terrain_click(screen_pos)

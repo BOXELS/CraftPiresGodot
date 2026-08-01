@@ -21,6 +21,7 @@ var _build_label: Label
 var pending_kind: StringName = &""          # armed building awaiting a click
 var pending_terraform: StringName = &""     # &"dig" / &"raise" awaiting a click
 var pending_attack_move: bool = false       # next click is an attack-move target
+var pending_pave: bool = false              # dirt-road paint mode (stays armed for drag)
 var mouse_mode: StringName = &"rts"         # &"rts" or &"fmode"
 var graphics_quality: StringName = &"high"
 
@@ -97,17 +98,20 @@ func bar_select_item(index: int) -> void:
 	if index < 0 or index >= items.size():
 		return
 	var entry: Dictionary = items[index]
-	# Folder → drill to depth 2; leaf → arm placement and close.
+	# Folder → drill to depth 2; pave leaf → paint mode; else arm placement.
 	if entry.has("children"):
 		_bar_folder = entry["children"]
 		_bar_depth = 2
 		_refresh_build_label()
 		return
-	arm_placement(entry.get("id", &""))
 	_bar_depth = 0
 	_bar_category = &""
 	_bar_folder = []
 	_refresh_build_label()
+	if entry.get("pave", false):
+		arm_pave()
+	else:
+		arm_placement(entry.get("id", &""))
 
 func _current_bar_items() -> Array:
 	if _bar_depth == 2:
@@ -179,8 +183,39 @@ func arm_placement(kind: StringName) -> void:
 	pending_kind = kind
 	pending_terraform = &""
 	pending_attack_move = false
+	pending_pave = false
 	placement_armed.emit(kind)
 	action_feedback.emit("Placing %s — click terrain (Esc to cancel)" % str(kind).capitalize())
+
+func arm_pave() -> void:
+	# Improvement vs Three.js: stay in paint mode for drag strokes until Esc —
+	# no re-open of the menu between strokes.
+	pending_pave = true
+	pending_kind = &""
+	pending_terraform = &""
+	pending_attack_move = false
+	action_feedback.emit("Dirt road — drag to paint (%d dirt/tile, +35%% speed). Esc cancels" % MaterialInteractions.DIRT_ROAD_COST)
+
+## Paint one dirt-road tile. Returns true if the surface changed.
+func paint_road_at(pos: Vector3) -> bool:
+	if world == null:
+		return false
+	var x: int = int(pos.x)
+	var z: int = int(pos.z)
+	var mat: int = world.shard.surface_material(x, z)
+	if mat == MaterialInteractions.ROAD_DIRT:
+		return false
+	if not MaterialInteractions.can_pave_dirt_road(mat):
+		action_feedback.emit("Roads go on grass or dirt")
+		return false
+	if not Events.spend(&"player", {&"dirt": MaterialInteractions.DIRT_ROAD_COST}):
+		action_feedback.emit("Need %d dirt (dig ground, or Esc to cancel)" % MaterialInteractions.DIRT_ROAD_COST)
+		return false
+	if not world.pave_dirt_road(x, z):
+		# Refund if pave somehow failed after spend.
+		Events.add_resource(&"player", &"dirt", MaterialInteractions.DIRT_ROAD_COST)
+		return false
+	return true
 
 ## Handle a left-click on terrain while a menu action is armed. Returns true if
 ## the click was consumed by the menu layer (so normal click-to-move is skipped).
@@ -193,9 +228,14 @@ func handle_terrain_click(pos: Vector3) -> bool:
 		_apply_terraform(pos)
 		pending_terraform = &""
 		return true
+	if pending_pave:
+		# Stay armed so the player can drag / click more tiles.
+		paint_road_at(pos)
+		return true
 	if pending_kind != &"":
 		_place_pending(pos)
-		pending_kind = &""
+		# Improvement: stay in place mode for rapid multi-place (like MVP Shift
+		# stroke, but without requiring Shift — Esc cancels).
 		return true
 	return false
 
@@ -203,6 +243,7 @@ func cancel_pending() -> void:
 	pending_kind = &""
 	pending_terraform = &""
 	pending_attack_move = false
+	pending_pave = false
 
 # --- Concrete actions -------------------------------------------------------
 

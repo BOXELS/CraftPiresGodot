@@ -12,7 +12,7 @@ const MATERIAL_COLORS: Dictionary = {
 	3: Color(0.52, 0.52, 0.55),  # stone
 	4: Color(0.85, 0.78, 0.55),  # sand
 	5: Color(0.90, 0.92, 0.95),  # snow
-	6: Color(0.30, 0.45, 0.70),  # water (later)
+	6: Color(0.66, 0.47, 0.28),  # dirt road (Settlers-style path)
 }
 
 # Faces: dir, 4 corners (CCW from outside)

@@ -77,6 +77,20 @@ func dig(x: int, z: int, amount: int = 1) -> void:
 func raise(x: int, z: int, amount: int = 1, material: int = 2) -> void:
 	edit_voxel(x, z, amount, material)
 
+## Paint a dirt-road surface on grass/dirt. Returns true if the tile changed.
+func pave_dirt_road(x: int, z: int) -> bool:
+	if x < 0 or x >= VoxelShard.SIZE_X or z < 0 or z >= VoxelShard.SIZE_Z:
+		return false
+	var h: int = shard.get_height(x, z)
+	if h <= 0:
+		return false
+	var mat: int = shard.get_material(x, h - 1, z)
+	if not MaterialInteractions.can_pave_dirt_road(mat):
+		return false
+	shard.set_material(x, h - 1, z, MaterialInteractions.ROAD_DIRT)
+	_remesh_around(x, z)
+	return true
+
 func _remesh_around(x: int, z: int) -> void:
 	# Rebuild the chunk containing (x,z) plus any neighbor chunk the edit
 	# touches on a border (faces at the seam are shared).

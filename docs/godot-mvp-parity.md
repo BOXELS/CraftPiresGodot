@@ -48,7 +48,7 @@ The MVP is a real RTS. The Godot build had almost none of this until recently.
 | Ground piles | felled trees / kills drop haulable piles | Missing |
 | Food resource + animals | hunt wildlife → food piles | Missing |
 | Sapling planting | plant fruit/plain trees inside claim | Missing |
-| Dirt roads | drag-paint, +35% move speed | Missing |
+| Dirt roads | drag-paint, +35% move speed | **Done** — paint mode stays armed, drag Bresenham stroke, seed starting dirt (Three.js shovel-gate was clunky) |
 | Transfer stock | depot → depot hauling | Missing |
 | Commander supply line | peasants ferry commander cargo | Missing |
 
@@ -59,17 +59,17 @@ The MVP is a real RTS. The Godot build had almost none of this until recently.
 | MVP building | Godot |
 | --- | --- |
 | Keep / Town Center | `keep` |
-| Small / Medium / Large House | `house` only (no tiers) |
-| Small / Medium / Large Storehouse + Storage Yard | `storehouse` only |
+| Small / Medium / Large House | `house`, `house_medium`, `house_large` |
+| Small / Medium Storehouse + Storage Yard | `storehouse`, `storehouse_medium`, `storageyard` |
 | Watchtower | `watchtower` |
-| Research Hall | Missing (tech via `T` only) |
-| CraftSmith / Toolsmith / Weaponsmith | Missing |
-| Dirt Road (pave) | Missing |
+| Research Hall | `researchhall` |
+| CraftSmith / Toolsmith / Weaponsmith | `toolsmith`, `weaponsmith` (CraftSmith later) |
+| Dirt Road (pave) | **Done** — Settlement → Roads → Dirt Road |
 
-Build menu: MVP is **Settlement(1) → Keep/House/Storage/Roads**, **Defense(2) →
-Watchtower**, **Crafting(3) → Hall/CraftSmith/Toolsmith/Weaponsmith**, with
-folder drill-down and Esc-back. Godot has a 3-category bar (Econ/Military/
-Wonder) — needs restructuring to match the MVP groups + tiers + roads.
+Build menu: **Settlement(1) → Keep/House/Storage/Roads**, **Defense(2) →
+Watchtower**, **Crafting(3) → Hall/Toolsmith/Weaponsmith**, with folder
+drill-down and Esc-back. Place/pave modes stay armed until Esc or RMB
+(improvement over Three.js re-select friction).
 
 ---
 

@@ -64,6 +64,9 @@ static func build_bar_rows() -> Dictionary:
 					{"id": &"storehouse_medium", "label": "Medium Store"},
 					{"id": &"storageyard", "label": "Storage Yard"},
 				]},
+				{"id": &"folder_roads", "label": "Roads", "children": [
+					{"id": &"dirt_road", "label": "Dirt Road", "pave": true},
+				]},
 			],
 		},
 		&"defense": {"label": "Defense", "items": [{"id": &"watchtower", "label": "Watchtower"}]},

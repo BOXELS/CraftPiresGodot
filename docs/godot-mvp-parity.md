@@ -30,7 +30,7 @@ The MVP is a real RTS. The Godot build had almost none of this until recently.
 | Help sheet | H toggles commands panel | **Done** — short categorized sheet (not the dense Three.js wall) |
 | Waypoint queue | Shift+RMB multi-flag route | **Done** — peasant + commander queues |
 | Sprint (stamina) | Ctrl+RMB dash | Missing |
-| F-mode possession | F takes direct WASD+mouse control of one unit | Partial — commander F-mode WASD only; no possess-any-unit, jump, crouch, mouse-look |
+| F-mode possession | F takes direct WASD+mouse control of one unit | **Done** — PossessController: any selected unit, mouse capture, clean F/Esc release |
 
 ---
 

@@ -60,7 +60,8 @@ func _lines() -> PackedStringArray:
 		"  Dirt Road · drag to paint (+35% speed)",
 		"",
 		"Other",
-		"  Hold Tab · radial menu   · F5 save · F9 load",
+		"  F · possess selected unit (WASD + mouse look · F/Esc release)",
+		"  Hold Tab · radial menu   · H help   · F5 save · F9 load",
 	])
 
 func toggle() -> void:

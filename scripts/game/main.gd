@@ -26,6 +26,7 @@ var _piles: PileField
 var _selection: SelectionManager
 var _population: Population
 var _help: HelpSheet
+var _possess: PossessController
 var _sel_box: SelectionBox
 var _lmb_down: bool = false
 var _pave_last: Vector2i = Vector2i(-1, -1)   # last cell painted in a road stroke
@@ -212,6 +213,13 @@ func _show_title() -> void:
 	_help.name = "Help"
 	add_child(_help)
 
+	_possess = PossessController.new()
+	_possess.name = "Possess"
+	add_child(_possess)
+	_possess.setup(_camera)
+	_possess.entered.connect(func(_u): _camera.set_process(false); _camera.set_process_unhandled_input(false))
+	_possess.exited.connect(func(_u): _camera.set_process(true); _camera.set_process_unhandled_input(true); _on_menu_feedback("Back to command view"))
+
 	# Optional: --menu-demo opens the radial menu (drilled into a submenu) and
 	# hovers a wedge so a --screenshot captures the shortcut-menu UI.
 	var demo_arg: String = _get_flag_arg("--menu-demo=")
@@ -322,6 +330,13 @@ func _on_start_single_player() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not _game_started or _commander == null or _camera == null:
 		return
+	# F-mode owns input while possessed (except F/Esc handled below).
+	if _possess != null and _possess.is_active():
+		if event is InputEventKey:
+			var fk := event as InputEventKey
+			if fk.pressed and not fk.echo and (fk.keycode == KEY_F or fk.keycode == KEY_ESCAPE):
+				_possess.exit()
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
@@ -374,6 +389,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif k.pressed and not k.echo and k.keycode == KEY_H:
 			if _help != null:
 				_help.toggle()
+		elif k.pressed and not k.echo and k.keycode == KEY_F:
+			# Possess the single selected unit (commander or peasant).
+			if _selection.count() == 1:
+				_possess.toggle(_selection.selected[0])
+			elif _possess != null and _possess.is_active():
+				_possess.exit()
+			else:
+				_on_menu_feedback("Select a single unit, then press F")
 		elif k.pressed and not k.echo and k.keycode == KEY_A and (Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)):
 			_select_all_peasants()
 		elif k.pressed and not k.echo and k.keycode == KEY_PERIOD:
@@ -708,8 +731,8 @@ func _process(_delta: float) -> void:
 		# highlights the instant the menu opens.
 		if Input.is_action_pressed("radial_menu") and _menu.radial.is_open():
 			_menu.track_radial(get_viewport().get_mouse_position())
-		# F-mode drives the commander with WASD instead of click-to-move.
-		if _commander != null:
+		# F-mode: menu toggle kept for radial Settings, but F key is primary.
+		if _commander != null and (_possess == null or not _possess.is_active()):
 			_commander.f_mode = _menu.mouse_mode == &"fmode"
 	# Fog reveal from living units each frame (cheap enough at this scale).
 	if _fog == null or _units == null:

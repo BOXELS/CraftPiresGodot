@@ -27,7 +27,7 @@ var graphics_quality: StringName = &"high"
 # Build-bar depth state: 0=closed, 1=category, 2=item list.
 var _bar_depth: int = 0
 var _bar_category: StringName = &""
-const BAR_CATEGORIES: Array = [&"economy", &"military", &"wonder"]
+const BAR_CATEGORIES: Array = [&"settlement", &"defense", &"crafting"]
 
 func setup(p_world: WorldBuilder, p_units: UnitManager, p_buildings: BuildingsManager, p_combat: CombatManager, p_depot: StorageDepot, p_commander: Commander) -> void:
 	world = p_world
@@ -69,36 +69,56 @@ func pop_radial() -> void:
 		radial.pop_level()
 
 # --- Build bar (AoE2 drill-down) ------------------------------------------
+# Depth 0 = closed · 1 = category row (Settlement/Defense/Crafting) · 2 = inside
+# a folder (House sizes, Storage tiers). Number keys act at the current depth.
+
+var _bar_folder: Array = []        # children of the open folder, when depth==2
 
 func toggle_bar_category(index: int) -> void:
-	# 1=Econ, 2=Military, 3=Wonder. Same key again pops back a level.
+	# 1=Settlement, 2=Defense, 3=Crafting. Same key again pops back a level.
 	var cat: StringName = BAR_CATEGORIES[index]
 	if _bar_depth == 1 and _bar_category == cat:
 		_bar_depth = 0
 		_bar_category = &""
 	elif _bar_depth == 2 and _bar_category == cat:
 		_bar_depth = 1
+		_bar_folder = []
 	else:
 		_bar_depth = 1
 		_bar_category = cat
+		_bar_folder = []
 	_refresh_build_label()
 
 func bar_select_item(index: int) -> void:
-	# While a category is open, number keys pick a building from its row.
+	# Number keys pick an entry at the current depth (category row or folder).
 	if _bar_depth < 1:
 		return
-	var row: Dictionary = ShortcutMenus.build_bar_rows().get(_bar_category, {})
-	var items: Array = row.get("items", [])
+	var items: Array = _current_bar_items()
 	if index < 0 or index >= items.size():
 		return
-	arm_placement(items[index])
+	var entry: Dictionary = items[index]
+	# Folder → drill to depth 2; leaf → arm placement and close.
+	if entry.has("children"):
+		_bar_folder = entry["children"]
+		_bar_depth = 2
+		_refresh_build_label()
+		return
+	arm_placement(entry.get("id", &""))
 	_bar_depth = 0
 	_bar_category = &""
+	_bar_folder = []
 	_refresh_build_label()
+
+func _current_bar_items() -> Array:
+	if _bar_depth == 2:
+		return _bar_folder
+	var row: Dictionary = ShortcutMenus.build_bar_rows().get(_bar_category, {})
+	return row.get("items", [])
 
 func pop_bar() -> void:
 	if _bar_depth == 2:
 		_bar_depth = 1
+		_bar_folder = []
 	elif _bar_depth == 1:
 		_bar_depth = 0
 		_bar_category = &""
@@ -110,13 +130,16 @@ func _refresh_build_label() -> void:
 	if _bar_depth == 0:
 		_build_label.text = ""
 		return
-	if _bar_depth == 1:
-		var row: Dictionary = ShortcutMenus.build_bar_rows().get(_bar_category, {})
-		var parts: Array = []
-		var items: Array = row.get("items", [])
-		for i in items.size():
-			parts.append("%d %s" % [i + 1, str(items[i]).capitalize()])
-		_build_label.text = "[%s]  %s   (Esc to close)" % [str(row.get("label", "")), "   ".join(parts)]
+	var items: Array = _current_bar_items()
+	var parts: Array = []
+	for i in items.size():
+		var e: Dictionary = items[i]
+		var suffix: String = " >" if e.has("children") else ""
+		parts.append("%d %s%s" % [i + 1, str(e.get("label", e.get("id", ""))), suffix])
+	var title: String = str(ShortcutMenus.build_bar_rows().get(_bar_category, {}).get("label", ""))
+	if _bar_depth == 2:
+		title += " · choose"
+	_build_label.text = "[%s]  %s   (Esc back)" % [title, "   ".join(parts)]
 
 # --- Radial action handling ------------------------------------------------
 

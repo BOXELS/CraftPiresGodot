@@ -16,6 +16,8 @@ static func radial_root() -> Dictionary:
 					{"id": &"place", "label": "Storehouse", "payload": &"storehouse"},
 					{"id": &"place", "label": "Watchtower", "payload": &"watchtower"},
 					{"id": &"place", "label": "Keep", "payload": &"keep"},
+					{"id": &"place", "label": "Research Hall", "payload": &"researchhall"},
+					{"id": &"place", "label": "Toolsmith", "payload": &"toolsmith"},
 				],
 			}},
 			{"id": &"cat_actions", "label": "Actions", "submenu": {
@@ -42,11 +44,35 @@ static func radial_root() -> Dictionary:
 		],
 	}
 
-## Nested build-bar rows (AoE2 drill-down). Top level = categories; each maps to
-## a list of placeable building kinds. Hotkeys are per-depth (1..n).
+## Nested build-bar rows (AoE2 drill-down), matching the Three.js MVP groups:
+## Settlement(1) → Keep/House/Storage · Defense(2) → Watchtower · Crafting(3) →
+## Hall/Toolsmith/Weaponsmith. House and Storage are folders with size tiers.
+## Hotkeys are per-depth (1..n); Esc backs one level.
 static func build_bar_rows() -> Dictionary:
 	return {
-		&"economy": {"label": "Economy", "items": [&"house", &"storehouse"]},
-		&"military": {"label": "Military", "items": [&"watchtower"]},
-		&"wonder": {"label": "Wonder", "items": [&"keep"]},
+		&"settlement": {
+			"label": "Settlement",
+			"items": [
+				{"id": &"keep", "label": "Keep"},
+				{"id": &"folder_house", "label": "House", "children": [
+					{"id": &"house", "label": "Small House"},
+					{"id": &"house_medium", "label": "Medium House"},
+					{"id": &"house_large", "label": "Large House"},
+				]},
+				{"id": &"folder_storage", "label": "Storage", "children": [
+					{"id": &"storehouse", "label": "Storehouse"},
+					{"id": &"storehouse_medium", "label": "Medium Store"},
+					{"id": &"storageyard", "label": "Storage Yard"},
+				]},
+			],
+		},
+		&"defense": {"label": "Defense", "items": [{"id": &"watchtower", "label": "Watchtower"}]},
+		&"crafting": {
+			"label": "Crafting",
+			"items": [
+				{"id": &"researchhall", "label": "Research Hall"},
+				{"id": &"toolsmith", "label": "Toolsmith"},
+				{"id": &"weaponsmith", "label": "Weaponsmith"},
+			],
+		},
 	}

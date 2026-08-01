@@ -38,12 +38,18 @@ func used() -> int:
 
 func cap() -> int:
 	var age_idx: int = clampi(age.age if age != null else 0, 0, AGE_CAPS.size() - 1)
-	var from_housing: int = POP_BASE + POP_KEEP_BONUS + houses.size() * POP_PER_HOUSE
+	var housing: int = 0
+	for h in houses:
+		housing += int(h.get("pop_bonus", POP_PER_HOUSE))
+	var from_housing: int = POP_BASE + POP_KEEP_BONUS + housing
 	return mini(AGE_CAPS[age_idx], from_housing)
 
 ## Register a completed house so it raises the cap and can birth peasants.
-func add_house(pos: Vector3) -> void:
-	houses.append({"pos": pos, "rally": pos + Vector3(2.5, 0, 2.5), "spawns": 0, "timer": HOUSE_SPAWN_INTERVAL})
+func add_house(pos: Vector3, kind: StringName = &"house") -> void:
+	houses.append({
+		"pos": pos, "rally": pos + Vector3(2.5, 0, 2.5), "spawns": 0,
+		"timer": HOUSE_SPAWN_INTERVAL, "pop_bonus": BuildingDefs.pop_bonus(kind),
+	})
 	population_changed.emit(used(), cap())
 
 func set_rally(index: int, rally: Vector3) -> void:

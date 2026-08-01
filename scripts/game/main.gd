@@ -561,9 +561,9 @@ func _on_building_claim(kind: StringName, tile: Vector3i) -> void:
 	if _age != null:
 		_age.record_building(kind)
 	# Completed houses raise the pop cap and start birthing peasants.
-	if kind == &"house" and _population != null and _world != null:
+	if BuildingDefs.is_house(kind) and _population != null and _world != null:
 		var gy: int = _world.shard.get_height(tile.x, tile.z)
-		_population.add_house(Vector3(tile.x, gy, tile.z))
+		_population.add_house(Vector3(tile.x, gy, tile.z), kind)
 
 func _on_age_advanced(new_age: int) -> void:
 	print("[main] advanced to age %d" % new_age)

@@ -12,7 +12,7 @@ func setup() -> void:
 	var build: Dictionary = root["items"][0]
 	assert_true(build.has("submenu"), "Build category opens a submenu")
 	var build_items: Array = build["submenu"]["items"]
-	assert_true(build_items.size() == 4, "Build submenu lists 4 buildings")
+	assert_true(build_items.size() == 6, "Build submenu lists 6 buildings")
 	assert_true(build_items[0].get("payload") == &"house", "first build item is the house")
 
 	# --- MenuController drives navigation + actions headlessly ---
@@ -83,11 +83,13 @@ func setup() -> void:
 	assert_true(menu.graphics_quality == &"low", "graphics quality set to low")
 	assert_true(is_equal_approx(get_viewport().scaling_3d_scale, 0.5), "low quality lowers 3D render scale")
 
-	# Build-bar drill-down: open Economy row, then digit picks House.
+	# Build-bar drill-down: open Settlement row, folder into House, pick Small.
 	menu.toggle_bar_category(0)
-	assert_true(menu._bar_depth == 1 and menu._bar_category == &"economy", "digit opens the Economy row")
-	menu.bar_select_item(0)
-	assert_true(menu.pending_kind == &"house", "row digit selects the house")
+	assert_true(menu._bar_depth == 1 and menu._bar_category == &"settlement", "digit opens the Settlement row")
+	menu.bar_select_item(1)   # House folder
+	assert_true(menu._bar_depth == 2, "house folder drills to depth 2")
+	menu.bar_select_item(0)   # Small House
+	assert_true(menu.pending_kind == &"house", "folder digit selects the small house")
 	assert_true(menu._bar_depth == 0, "bar closes after selection")
 	menu.cancel_pending()
 

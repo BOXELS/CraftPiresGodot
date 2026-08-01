@@ -68,8 +68,8 @@ The MVP is a real RTS. The Godot build had almost none of this until recently.
 
 Build menu: **Settlement(1) → Keep/House/Storage/Roads**, **Defense(2) →
 Watchtower**, **Crafting(3) → Hall/Toolsmith/Weaponsmith**, with folder
-drill-down and Esc-back. Place/pave modes stay armed until Esc or RMB
-(improvement over Three.js re-select friction).
+drill-down and Esc-back. Visual bottom bar swaps in place (AoE2 / Three.js
+MVP): name + cost + hotkey on each button; active place/pave stays highlighted.
 
 ---
 
@@ -84,13 +84,26 @@ drill-down and Esc-back. Place/pave modes stay armed until Esc or RMB
 
 ---
 
+## Build menu (AoE2 / Three.js MVP)
+
+Godot now mirrors the MVP bottom bar (`#buildmenu` / `hud.ts`):
+
+- Always-visible bottom-center **BuildBar** after Single Player starts
+- Top: **Settlement [1] · Defense [2] · Crafting [3]**
+- Drill swaps the row in place: **Back + crumb + items** (folders for House / Storage / Roads)
+- Buttons show **name · cost · [hotkey]**; armed place/pave stays highlighted
+- Esc backs one level; Esc again cancels armed place/pave
+
+---
+
 ## Already ahead of the MVP (Godot-only)
 
 - Live voxel terraform (dig / raise) with re-mesh + collapse physics
 - Water / mud / fire cellular sims + water rendering
 - Season lifecycle + Hall of Legends
 - Hold-Tab radial shortcut menu (cursor-anchored)
-- Deterministic sim + 34-scenario headless test harness
+- Deterministic sim + headless scenario harness
+- Dirt-road paint stays armed for drag (vs MVP re-open between strokes)
 
 ---
 

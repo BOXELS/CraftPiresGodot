@@ -15,7 +15,7 @@ var depot: StorageDepot
 var commander: Commander
 
 var radial: RadialMenu
-var _build_label: Label
+var build_bar: BuildBar
 
 # Interaction state.
 var pending_kind: StringName = &""          # armed building awaiting a click
@@ -25,9 +25,11 @@ var pending_pave: bool = false              # dirt-road paint mode (stays armed 
 var mouse_mode: StringName = &"rts"         # &"rts" or &"fmode"
 var graphics_quality: StringName = &"high"
 
-# Build-bar depth state: 0=closed, 1=category, 2=item list.
+# Build-bar depth: 0=top categories, 1=group, 2=folder (AoE2 / Three.js MVP).
 var _bar_depth: int = 0
 var _bar_category: StringName = &""
+var _bar_folder: Array = []
+var _bar_folder_id: StringName = &""
 const BAR_CATEGORIES: Array = [&"settlement", &"defense", &"crafting"]
 
 func setup(p_world: WorldBuilder, p_units: UnitManager, p_buildings: BuildingsManager, p_combat: CombatManager, p_depot: StorageDepot, p_commander: Commander) -> void:
@@ -43,11 +45,20 @@ func _ready() -> void:
 	radial = RadialMenu.new()
 	add_child(radial)
 	radial.action_chosen.connect(_on_radial_action)
-	_build_label = Label.new()
-	_build_label.position = Vector2(16, 44)
-	_build_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
-	add_child(_build_label)
-	_refresh_build_label()
+	build_bar = BuildBar.new()
+	add_child(build_bar)
+	build_bar.group_pressed.connect(_on_bar_group)
+	build_bar.folder_pressed.connect(_on_bar_folder)
+	build_bar.item_pressed.connect(_on_bar_item)
+	build_bar.back_pressed.connect(pop_bar)
+	# Hidden until Single Player starts (world sims behind the title menu).
+	build_bar.visible = false
+
+func set_build_bar_visible(on: bool) -> void:
+	if build_bar != null:
+		build_bar.visible = on
+		if on:
+			_sync_bar()
 
 func is_busy() -> bool:
 	return radial.is_open() or _bar_depth > 0
@@ -69,49 +80,35 @@ func pop_radial() -> void:
 	if radial.is_open():
 		radial.pop_level()
 
-# --- Build bar (AoE2 drill-down) ------------------------------------------
-# Depth 0 = closed · 1 = category row (Settlement/Defense/Crafting) · 2 = inside
-# a folder (House sizes, Storage tiers). Number keys act at the current depth.
-
-var _bar_folder: Array = []        # children of the open folder, when depth==2
+# --- Build bar (AoE2 swap-in-place, matching Three.js MVP) ----------------
 
 func toggle_bar_category(index: int) -> void:
-	# 1=Settlement, 2=Defense, 3=Crafting. Same key again pops back a level.
+	# Top-level digits open a group; same digit again (while at that group top) closes.
 	var cat: StringName = BAR_CATEGORIES[index]
 	if _bar_depth == 1 and _bar_category == cat:
-		_bar_depth = 0
-		_bar_category = &""
-	elif _bar_depth == 2 and _bar_category == cat:
+		_close_bar()
+		return
+	if _bar_depth == 2 and _bar_category == cat:
+		# Same category digit while in a folder → back to the group row.
 		_bar_depth = 1
 		_bar_folder = []
-	else:
-		_bar_depth = 1
-		_bar_category = cat
-		_bar_folder = []
-	_refresh_build_label()
+		_bar_folder_id = &""
+		_sync_bar()
+		return
+	_bar_depth = 1
+	_bar_category = cat
+	_bar_folder = []
+	_bar_folder_id = &""
+	_sync_bar()
 
 func bar_select_item(index: int) -> void:
-	# Number keys pick an entry at the current depth (category row or folder).
+	# Digits pick an entry at the current depth (group or folder).
 	if _bar_depth < 1:
 		return
 	var items: Array = _current_bar_items()
 	if index < 0 or index >= items.size():
 		return
-	var entry: Dictionary = items[index]
-	# Folder → drill to depth 2; pave leaf → paint mode; else arm placement.
-	if entry.has("children"):
-		_bar_folder = entry["children"]
-		_bar_depth = 2
-		_refresh_build_label()
-		return
-	_bar_depth = 0
-	_bar_category = &""
-	_bar_folder = []
-	_refresh_build_label()
-	if entry.get("pave", false):
-		arm_pave()
-	else:
-		arm_placement(entry.get("id", &""))
+	_activate_entry(items[index])
 
 func _current_bar_items() -> Array:
 	if _bar_depth == 2:
@@ -123,27 +120,59 @@ func pop_bar() -> void:
 	if _bar_depth == 2:
 		_bar_depth = 1
 		_bar_folder = []
+		_bar_folder_id = &""
+		_sync_bar()
 	elif _bar_depth == 1:
-		_bar_depth = 0
-		_bar_category = &""
-	_refresh_build_label()
+		_close_bar()
 
-func _refresh_build_label() -> void:
-	if _build_label == null:
+func _close_bar() -> void:
+	_bar_depth = 0
+	_bar_category = &""
+	_bar_folder = []
+	_bar_folder_id = &""
+	_sync_bar()
+
+func _sync_bar() -> void:
+	if build_bar == null:
 		return
+	build_bar.set_active_kind(pending_kind)
+	build_bar.set_pave_active(pending_pave)
 	if _bar_depth == 0:
-		_build_label.text = ""
+		build_bar.close_to_top()
+	elif _bar_depth == 2:
+		build_bar.open_group(_bar_category)
+		build_bar.open_folder(_bar_folder_id, _bar_folder)
+	else:
+		build_bar.open_group(_bar_category)
+
+func _on_bar_group(group_id: StringName) -> void:
+	var idx: int = BAR_CATEGORIES.find(group_id)
+	if idx >= 0:
+		toggle_bar_category(idx)
+
+func _on_bar_folder(folder_id: StringName, children: Array) -> void:
+	_bar_folder_id = folder_id
+	_bar_folder = children
+	_bar_depth = 2
+	_sync_bar()
+
+func _on_bar_item(entry: Dictionary) -> void:
+	_activate_entry(entry)
+
+func _activate_entry(entry: Dictionary) -> void:
+	if entry.has("children"):
+		_bar_folder_id = entry.get("id", &"folder")
+		_bar_folder = entry["children"]
+		_bar_depth = 2
+		_sync_bar()
 		return
-	var items: Array = _current_bar_items()
-	var parts: Array = []
-	for i in items.size():
-		var e: Dictionary = items[i]
-		var suffix: String = " >" if e.has("children") else ""
-		parts.append("%d %s%s" % [i + 1, str(e.get("label", e.get("id", ""))), suffix])
-	var title: String = str(ShortcutMenus.build_bar_rows().get(_bar_category, {}).get("label", ""))
-	if _bar_depth == 2:
-		title += " · choose"
-	_build_label.text = "[%s]  %s   (Esc back)" % [title, "   ".join(parts)]
+	# Leaf: arm place/pave but keep the bar open on the current row so the
+	# active button highlights (AoE2 stays in the menu while placing).
+	if entry.get("pave", false):
+		arm_pave()
+	else:
+		arm_placement(entry.get("id", &""))
+	_sync_bar()
 
 # --- Radial action handling ------------------------------------------------
 
@@ -186,6 +215,9 @@ func arm_placement(kind: StringName) -> void:
 	pending_pave = false
 	placement_armed.emit(kind)
 	action_feedback.emit("Placing %s — click terrain (Esc to cancel)" % str(kind).capitalize())
+	if build_bar != null:
+		build_bar.set_active_kind(pending_kind)
+		build_bar.set_pave_active(false)
 
 func arm_pave() -> void:
 	# Improvement vs Three.js: stay in paint mode for drag strokes until Esc —
@@ -195,6 +227,9 @@ func arm_pave() -> void:
 	pending_terraform = &""
 	pending_attack_move = false
 	action_feedback.emit("Dirt road — drag to paint (%d dirt/tile, +35%% speed). Esc cancels" % MaterialInteractions.DIRT_ROAD_COST)
+	if build_bar != null:
+		build_bar.set_active_kind(&"")
+		build_bar.set_pave_active(true)
 
 ## Paint one dirt-road tile. Returns true if the surface changed.
 func paint_road_at(pos: Vector3) -> bool:
@@ -244,6 +279,9 @@ func cancel_pending() -> void:
 	pending_terraform = &""
 	pending_attack_move = false
 	pending_pave = false
+	if build_bar != null:
+		build_bar.set_active_kind(&"")
+		build_bar.set_pave_active(false)
 
 # --- Concrete actions -------------------------------------------------------
 

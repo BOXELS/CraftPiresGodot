@@ -324,6 +324,8 @@ func _show_title() -> void:
 func _on_start_single_player() -> void:
 	_game_started = true
 	_hud_label.visible = true
+	if _menu != null:
+		_menu.set_build_bar_visible(true)
 	Sim.start_sim(int(_get_flag_arg("--seed=")) if not _get_flag_arg("--seed=").is_empty() else 12345)
 	_update_hud()
 

@@ -92,7 +92,7 @@ func setup() -> void:
 	assert_true(menu._bar_depth == 2, "house folder drills to depth 2")
 	menu.bar_select_item(0)   # Small House
 	assert_true(menu.pending_kind == &"house", "folder digit selects the small house")
-	assert_true(menu._bar_depth == 0, "bar closes after selection")
+	assert_true(menu._bar_depth == 2, "bar stays open on the folder row while placing")
 	menu.cancel_pending()
 
 	finish()

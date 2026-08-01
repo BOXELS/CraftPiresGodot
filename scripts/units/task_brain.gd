@@ -11,6 +11,7 @@ var unit: Peasant
 var order: StringName = &"idle"
 var order_data: Dictionary = {}
 var state: StringName = &"idle"
+var waypoints: Array = []          # queued Vector3 destinations (AoE2 Shift+RMB)
 
 var _state_time: float = 0.0
 var _last_pos: Vector3 = Vector3.ZERO
@@ -24,7 +25,17 @@ func set_order(new_order: StringName, data: Dictionary) -> void:
 	order_data = data
 	_state_time = 0.0
 	_stall_time = 0.0
+	if new_order != &"move":
+		waypoints.clear()
 	_enter()
+
+## Queue a move waypoint (Shift+RMB). Starts a move order if not already moving.
+func queue_waypoint(pos: Vector3) -> void:
+	if order == &"move" and state == &"moving":
+		waypoints.append(pos)
+		return
+	waypoints.clear()
+	set_order(&"move", {"pos": pos})
 
 func tick(delta: float) -> void:
 	_state_time += delta
@@ -76,7 +87,12 @@ func _enter() -> void:
 
 func _tick_move() -> void:
 	if state == &"moving" and not unit.has_move_target:
-		# Reached destination; order complete -> standing idle.
+		# Arrived — pull next waypoint, or idle.
+		if not waypoints.is_empty():
+			var next: Vector3 = waypoints.pop_front()
+			order_data["pos"] = next
+			unit.move_to(next)
+			return
 		set_order(&"idle", {})
 
 func _tick_gather() -> void:

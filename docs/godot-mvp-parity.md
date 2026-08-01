@@ -22,13 +22,13 @@ The MVP is a real RTS. The Godot build had almost none of this until recently.
 | Shift add/remove | Shift+LMB toggles | **Done** |
 | Double-click same type | LMB×2 = same kind+loadout on screen | **Done** — `select_same_on_screen` |
 | Triple-click all type | LMB×3 = every unit of kind on screen | Partial — double-click only (no triple tier) |
-| Smart right-click | RMB routed by target: move / gather / build / staff / attack | **Done** — `_issue_context_command` (soldiers attack-move, commander beam/move, peasants build/gather/dig) |
+| Smart right-click | RMB routed by target: move / gather / build / staff / attack | **Done** — RMB = move (formation) / site = build; Shift+LMB = gather/dig/hunt (fixed Godot inversion) |
 | Selection rings | ring under each selected unit | **Done** — torus ring per unit |
 | Idle peasant cycle | `.` / `Shift+.` select + jump | **Done** |
 | Select all peasants | Ctrl+A | **Done** |
 | Select commander | Tab (again = jump camera) | **Done** |
 | Help sheet | H toggles commands panel | Missing |
-| Waypoint queue | Shift+RMB multi-flag route | Missing |
+| Waypoint queue | Shift+RMB multi-flag route | **Done** — peasant + commander queues |
 | Sprint (stamina) | Ctrl+RMB dash | Missing |
 | F-mode possession | F takes direct WASD+mouse control of one unit | Partial — commander F-mode WASD only; no possess-any-unit, jump, crouch, mouse-look |
 

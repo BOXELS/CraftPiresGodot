@@ -20,6 +20,7 @@ var cargo: int = 0
 var target_position: Vector3 = Vector3.ZERO
 var has_target: bool = false
 var beaming: bool = false
+var waypoints: Array = []          # queued Vector3 destinations (Shift+RMB)
 var beam_target: Vector3 = Vector3.ZERO
 
 var shard: VoxelShard
@@ -83,13 +84,18 @@ func _make_beam() -> MeshInstance3D:
 	mi.material_override = mat
 	return mi
 
-func order_move(pos: Vector3) -> void:
+func order_move(pos: Vector3, append: bool = false) -> void:
+	if append and has_target and not beaming:
+		waypoints.append(pos)
+		return
+	waypoints.clear()
 	target_position = pos
 	has_target = true
 	beaming = false
 	beam_mesh.visible = false
 
 func order_beam_gather(world_pos: Vector3) -> void:
+	waypoints.clear()
 	beam_target = world_pos
 	beaming = true
 	has_target = true
@@ -137,7 +143,12 @@ func _physics_process(delta: float) -> void:
 			has_target = false
 			horizontal = Vector3.ZERO
 			if not beaming:
-				arrived.emit()
+				if not waypoints.is_empty():
+					var next: Vector3 = waypoints.pop_front()
+					target_position = next
+					has_target = true
+				else:
+					arrived.emit()
 		else:
 			horizontal = to_target.normalized() * SPEED
 			_face(to_target)

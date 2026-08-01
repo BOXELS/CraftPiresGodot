@@ -48,8 +48,12 @@ func setup(p_shard: VoxelShard, p_team: int = 0) -> void:
 
 # --- Order API (command boundary) -------------------------------------------
 
-func order_move(pos: Vector3) -> void:
-	brain.set_order(&"move", {"pos": pos})
+func order_move(pos: Vector3, append: bool = false) -> void:
+	if append:
+		brain.queue_waypoint(pos)
+	else:
+		brain.waypoints.clear()
+		brain.set_order(&"move", {"pos": pos})
 
 func order_gather(node_pos: Vector3, kind: StringName = &"wood") -> void:
 	brain.set_order(&"gather", {"pos": node_pos, "kind": kind})

@@ -408,6 +408,11 @@ func _on_left_release(screen_pos: Vector2) -> void:
 			_selection.select_same_on_screen(u)   # double-click: all same type
 		else:
 			_selection.select_only(u)
+	elif Input.is_key_pressed(KEY_SHIFT) and _selection.count() > 0:
+		# Shift+LMB on terrain with a selection = work order (gather/dig/hunt).
+		var pos: Variant = _terrain_click(screen_pos)
+		if pos != null:
+			_issue_work_order(pos)
 	else:
 		# Clicked empty terrain: clear selection (unless shift held).
 		if not Input.is_key_pressed(KEY_SHIFT):
@@ -452,65 +457,97 @@ func _on_right_click(screen_pos: Vector2) -> void:
 	var pos: Variant = _terrain_click(screen_pos)
 	if pos == null:
 		return
-	# Debug terraforming modifiers take priority (existing behavior).
-	if Input.is_key_pressed(KEY_SHIFT):
-		_raise_at(pos)
-		return
-	if Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META):
-		_dig_at(pos)
-		return
-	_issue_context_command(pos, screen_pos)
+	# Shift+RMB = queue waypoint (AoE2 multi-flag route). Plain RMB = command.
+	var append: bool = Input.is_key_pressed(KEY_SHIFT)
+	_issue_context_command(pos, screen_pos, append)
 
-## AoE2 smart right-click: route the order by what was clicked and who is selected.
-func _issue_context_command(pos: Vector3, screen_pos: Vector2) -> void:
-	# Soldiers (attack-move) first — they're the military branch of the selection.
+## AoE2 smart right-click (aligned with the Three.js MVP, cleaned up):
+## - RMB ground / tree / animal / pile = MOVE (formation offsets for groups)
+## - RMB construction site = haul + build
+## - Shift+RMB = queue a waypoint instead of replacing the route
+## Gather / dig / hunt live on Shift+LMB (work order), not RMB — that was the
+## clunky Godot inversion we're fixing.
+func _issue_context_command(pos: Vector3, _screen_pos: Vector2, append: bool = false) -> void:
 	var soldiers: Array = _selection.soldiers()
 	if not soldiers.is_empty():
 		for s in soldiers:
 			s.order_attack_move(pos)
 		return
-	# Commander: beam-gather on resources, otherwise move.
+
 	if _selection.has_commander():
-		var tree: Node3D = _resources.nearest_tree(pos, 2.5) if _resources != null else null
-		if tree != null:
-			_commander.order_beam_gather(tree.position)
-		else:
-			_commander.order_move(pos)
+		# Commander: RMB always moves (or queues). Beam is Shift+LMB work.
+		_commander.order_move(pos, append)
 		return
-	# Peasants: hunt prey > collect pile > build site > gather tree > dig/mine.
+
 	var peasants: Array = _selection.peasants()
-	if not peasants.is_empty():
-		if _animals != null:
-			var prey: int = _animals.nearest_animal(pos, 2.5)
-			if prey >= 0:
-				for p in peasants:
-					p.order_hunt(_animals, prey)
-				return
-		if _piles != null:
-			var pile: int = _piles.nearest_pile(pos, 2.5)
-			if pile >= 0:
-				for p in peasants:
-					p.order_pick_pile(_piles, pile)
-				return
-		var site: ConstructionSite = _buildings.site_near(pos, 4.0) if _buildings != null else null
-		if site != null:
-			for p in peasants:
-				p.order_haul(site, _depot)
-			return
-		var tree: Node3D = _resources.nearest_tree(pos, 2.5) if _resources != null else null
-		if tree != null:
-			for p in peasants:
-				p.order_gather(tree.position, &"wood")
-			return
-		# Bare ground: dig dirt or mine stone by surface material.
-		var x: int = int(pos.x)
-		var z: int = int(pos.z)
-		var kind: StringName = &"stone" if _world.shard.surface_material(x, z) == 3 else &"dirt"
-		for p in peasants:
-			p.order_dig(pos, kind)
+	if peasants.is_empty():
 		return
-	# Nothing selected: fall back to sending the nearest free peasant to dig.
-	_order_dig(pos)
+
+	# Building site under the cursor → put them to work (MVP RMB on site).
+	var site: ConstructionSite = _buildings.site_near(pos, 4.0) if _buildings != null else null
+	if site != null and not append:
+		for p in peasants:
+			p.order_haul(site, _depot)
+		return
+
+	# Otherwise: formation move (ring offsets so they don't stack).
+	_move_selection_to(pos, append)
+
+func _move_selection_to(pos: Vector3, append: bool = false) -> void:
+	var movers: Array = []
+	if _selection.has_commander():
+		movers.append(_commander)
+	for p in _selection.peasants():
+		movers.append(p)
+	var n: int = movers.size()
+	for i in n:
+		var ring: int = int(i / 6.0)
+		var a: float = (float(i % 6) / 6.0) * TAU + float(ring) * 0.5
+		var r: float = float(ring) * 1.4 + (1.2 if n > 1 else 0.0)
+		var dest := Vector3(pos.x + cos(a) * r, pos.y, pos.z + sin(a) * r)
+		var u: Node3D = movers[i]
+		if u is Peasant:
+			(u as Peasant).order_move(dest, append)
+		elif u is Commander:
+			(u as Commander).order_move(dest, append)
+
+## Shift+LMB work order: gather tree, hunt, pick pile, dig, or beam.
+func _issue_work_order(pos: Vector3) -> void:
+	if _selection.has_commander() and _selection.peasants().is_empty():
+		var tree: Node3D = _resources.nearest_tree(pos, 2.5) if _resources != null else null
+		_commander.order_beam_gather(tree.position if tree != null else pos)
+		return
+	var peasants: Array = _selection.peasants()
+	if peasants.is_empty():
+		return
+	if _animals != null:
+		var prey: int = _animals.nearest_animal(pos, 2.5)
+		if prey >= 0:
+			for p in peasants:
+				p.order_hunt(_animals, prey)
+			return
+	if _piles != null:
+		var pile: int = _piles.nearest_pile(pos, 2.5)
+		if pile >= 0:
+			for p in peasants:
+				p.order_pick_pile(_piles, pile)
+			return
+	var site: ConstructionSite = _buildings.site_near(pos, 4.0) if _buildings != null else null
+	if site != null:
+		for p in peasants:
+			p.order_haul(site, _depot)
+		return
+	var tree: Node3D = _resources.nearest_tree(pos, 2.5) if _resources != null else null
+	if tree != null:
+		for p in peasants:
+			p.order_gather(tree.position, &"wood")
+		return
+	# Bare ground: dig dirt or mine stone by surface material.
+	var x: int = int(pos.x)
+	var z: int = int(pos.z)
+	var kind: StringName = &"stone" if _world.shard.surface_material(x, z) == 3 else &"dirt"
+	for p in peasants:
+		p.order_dig(pos, kind)
 
 func _pick_unit(screen_pos: Vector2) -> Node3D:
 	# Units don't body-collide (heightmap-driven), so pick by screen proximity
@@ -789,4 +826,4 @@ func _update_hud() -> void:
 	var sel_text := ""
 	if _selection != null and _selection.count() > 0:
 		sel_text = " · sel %d" % _selection.count()
-	_hud_label.text = "CraftPires" + res_text + pop_text + sel_text + season_text + " — LMB sel · RMB cmd · TAB menu · 1/2/3 build · . idle"
+	_hud_label.text = "CraftPires" + res_text + pop_text + sel_text + season_text + " — LMB sel · RMB move · Shift+LMB work · Shift+RMB queue · TAB menu"

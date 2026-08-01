@@ -22,6 +22,7 @@ var _main_menu: MainMenu
 var _game_started: bool = false
 var _resources: ResourceNodes
 var _selection: SelectionManager
+var _population: Population
 var _sel_box: SelectionBox
 var _lmb_down: bool = false
 var _hud_label: Label
@@ -144,6 +145,13 @@ func _show_title() -> void:
 	# Phase 8: age progression. Buildings that complete feed the age gates.
 	_age = AgeManager.new(&"player")
 	_age.age_advanced.connect(_on_age_advanced)
+
+	# Population: cap from houses, homestead spawning (food cost per birth).
+	_population = Population.new()
+	_population.name = "Population"
+	add_child(_population)
+	_population.setup(_units, _age, world, &"player")
+	_population.peasant_born.connect(_on_peasant_born)
 
 	# Phase 10: enemy AI civ to the north-east + win conditions. The static
 	# enemy squad above is replaced by a living opponent that builds an economy.
@@ -526,9 +534,19 @@ func _on_building_claim(kind: StringName, tile: Vector3i) -> void:
 		_territory.add_claim(tile.x, tile.z, kind)
 	if _age != null:
 		_age.record_building(kind)
+	# Completed houses raise the pop cap and start birthing peasants.
+	if kind == &"house" and _population != null and _world != null:
+		var gy: int = _world.shard.get_height(tile.x, tile.z)
+		_population.add_house(Vector3(tile.x, gy, tile.z))
 
 func _on_age_advanced(new_age: int) -> void:
 	print("[main] advanced to age %d" % new_age)
+
+func _on_peasant_born(peasant: Peasant, _house: Dictionary) -> void:
+	if _hud_label != null:
+		_hud_label.text = "New peasant born! (%d/%d)" % [_population.used(), _population.cap()]
+	await get_tree().create_timer(2.0).timeout
+	_update_hud()
 
 func _save() -> void:
 	if _world == null or _units == null:
@@ -672,10 +690,17 @@ func _on_cargo_changed(_amount: int, _capacity: int) -> void:
 func _update_hud() -> void:
 	if _hud_label == null:
 		return
-	var cargo_text := ""
-	if _commander != null:
-		cargo_text = " · cargo %d/%d" % [_commander.cargo, Commander.CARGO_CAPACITY]
+	var pop_text := ""
+	if _population != null:
+		pop_text = " · pop %d/%d" % [_population.used(), _population.cap()]
+	var res := Events.get_civ_resources(&"player")
+	var res_text := " · W%d S%d F%d D%d" % [
+		int(res.get(&"wood", 0)), int(res.get(&"stone", 0)),
+		int(res.get(&"food", 0)), int(res.get(&"dirt", 0))]
 	var season_text := ""
 	if _season != null:
 		season_text = " · S%d d%d" % [_season.season_number, int(_season.elapsed_days)]
-	_hud_label.text = "CraftPires — LMB select/drag · RMB command · Shift+RMB raise · TAB menu · 1/2/3 build · . idle · F5/F9" + cargo_text + season_text
+	var sel_text := ""
+	if _selection != null and _selection.count() > 0:
+		sel_text = " · sel %d" % _selection.count()
+	_hud_label.text = "CraftPires" + res_text + pop_text + sel_text + season_text + " — LMB sel · RMB cmd · TAB menu · 1/2/3 build · . idle"

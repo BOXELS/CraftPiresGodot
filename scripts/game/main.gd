@@ -18,6 +18,8 @@ var _ai: AIOpponent
 var _wincon: WinConditions
 var _season: Season
 var _menu: MenuController
+var _main_menu: MainMenu
+var _game_started: bool = false
 var _hud_label: Label
 var _place_cooldown: float = 0.0
 
@@ -105,7 +107,7 @@ func _show_title() -> void:
 		var pz: float = cz + 2.0 + float(i / 2) * 1.5
 		var ph: int = world.shard.get_height(int(px), int(pz))
 		_units.spawn_peasant(Vector3(px, ph, pz), 0)
-		Sim.start_sim(12345)
+	# Sim start is deferred to Single Player (or scenarios start their own).
 
 	# Starting storage so early construction is possible.
 	Events.add_resource(&"player", &"wood", 80)
@@ -253,8 +255,24 @@ func _show_title() -> void:
 	add_child(layer)
 	_update_hud()
 
+	# Title menu over the live world. Single Player starts input + the sim.
+	_main_menu = MainMenu.new()
+	_main_menu.name = "MainMenu"
+	add_child(_main_menu)
+	_main_menu.start_single_player.connect(_on_start_single_player)
+	_game_started = false
+	_hud_label.visible = false
+	# World sims as a backdrop but units/AI/win-con stay paused until start.
+	Sim.stop_sim()
+
+func _on_start_single_player() -> void:
+	_game_started = true
+	_hud_label.visible = true
+	Sim.start_sim(int(_get_flag_arg("--seed=")) if not _get_flag_arg("--seed=").is_empty() else 12345)
+	_update_hud()
+
 func _unhandled_input(event: InputEvent) -> void:
-	if _commander == null or _camera == null:
+	if not _game_started or _commander == null or _camera == null:
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
@@ -378,9 +396,9 @@ func _load() -> void:
 
 func _process(_delta: float) -> void:
 	# Hold-Tab radial menu: open on press, confirm hovered wedge on release.
-	if _menu != null:
+	if _menu != null and _game_started:
 		if Input.is_action_just_pressed("radial_menu"):
-			_menu.open_radial()
+			_menu.open_radial(get_viewport().get_mouse_position())
 		elif Input.is_action_just_released("radial_menu"):
 			_menu.release_radial()
 		# Track even without motion events so the wedge under a still mouse
@@ -401,7 +419,9 @@ func _process(_delta: float) -> void:
 			sources.append({"x": int(p.position.x), "z": int(p.position.z), "radius": 7})
 	_fog.refresh_visibility(sources)
 
-	# AI + win conditions (cheap checks each frame).
+	# AI + win conditions (cheap checks each frame) — only once the game starts.
+	if not _game_started:
+		return
 	if _ai != null and _commander != null:
 		_ai.tick(_commander.position)
 	if _wincon != null:

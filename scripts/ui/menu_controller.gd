@@ -53,8 +53,8 @@ func is_busy() -> bool:
 
 # --- Radial open/track/confirm -------------------------------------------
 
-func open_radial() -> void:
-	radial.open(ShortcutMenus.radial_root())
+func open_radial(at: Vector2 = Vector2.INF) -> void:
+	radial.open(ShortcutMenus.radial_root(), at)
 
 func track_radial(mouse_pos: Vector2) -> void:
 	if radial.is_open():

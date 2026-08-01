@@ -13,16 +13,23 @@ const WEDGE_GAP: float = 0.06        # radians trimmed off each wedge edge
 
 var _level_stack: Array = []         # each entry: {"title": String, "items": Array}
 var _hover: int = -1
+var _center: Vector2 = Vector2.ZERO  # on-screen anchor (cursor at open), clamped
 
 func _ready() -> void:
 	visible = false
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-func open(root: Dictionary) -> void:
+func open(root: Dictionary, at: Vector2 = Vector2.INF) -> void:
 	_level_stack = [root]
 	_hover = -1
 	visible = true
+	# Anchor at the cursor (or viewport center when not given), clamped so the
+	# whole ring stays on screen regardless of window size.
+	var vp: Vector2 = get_viewport_rect().size
+	_center = at if at != Vector2.INF else vp * 0.5
+	_center.x = clampf(_center.x, RADIUS + 8.0, vp.x - RADIUS - 8.0)
+	_center.y = clampf(_center.y, RADIUS + 8.0, vp.y - RADIUS - 8.0)
 	queue_redraw()
 
 func close() -> void:
@@ -43,8 +50,7 @@ func _item_count() -> int:
 
 ## Track the mouse while the open key is held. Returns the hovered index.
 func track(mouse_pos: Vector2) -> int:
-	var center: Vector2 = size * 0.5
-	var rel: Vector2 = mouse_pos - center
+	var rel: Vector2 = mouse_pos - _center
 	if rel.length() < DEAD_ZONE:
 		_hover = -1
 		queue_redraw()
@@ -87,7 +93,7 @@ func pop_level() -> void:
 func _draw() -> void:
 	if not is_open():
 		return
-	var center: Vector2 = size * 0.5
+	var center: Vector2 = _center
 	var cur: Dictionary = current()
 	var items: Array = cur.get("items", [])
 	var count: int = items.size()

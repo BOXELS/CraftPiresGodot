@@ -34,6 +34,7 @@ static func radial_root() -> Dictionary:
 			{"id": &"cat_settings", "label": "Settings", "submenu": {
 				"title": "Settings",
 				"items": [
+					{"id": &"toggle_fullscreen", "label": "Fullscreen (F11)"},
 					{"id": &"toggle_mouse_mode", "label": "Mouse: RTS/F-mode"},
 					{"id": &"gfx_high", "label": "Graphics: High"},
 					{"id": &"gfx_medium", "label": "Graphics: Medium"},

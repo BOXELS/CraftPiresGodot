@@ -197,6 +197,9 @@ func _on_radial_action(id: StringName, payload: Variant) -> void:
 			action_feedback.emit("Army selected: %d soldier(s) — use Attack Move" % _army().size())
 		&"stop_units":
 			_stop_units()
+		&"toggle_fullscreen":
+			var on: bool = Controls.toggle_fullscreen()
+			action_feedback.emit("Fullscreen: %s" % ("on" if on else "off"))
 		&"toggle_mouse_mode":
 			toggle_mouse_mode()
 		&"gfx_high":

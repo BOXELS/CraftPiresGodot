@@ -330,6 +330,14 @@ func _on_start_single_player() -> void:
 	_update_hud()
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Fullscreen works from the title screen too.
+	if event is InputEventKey:
+		var fk0 := event as InputEventKey
+		if fk0.pressed and not fk0.echo and (fk0.keycode == KEY_F11 or Input.is_action_just_pressed("toggle_fullscreen")):
+			var on: bool = Controls.toggle_fullscreen()
+			_on_menu_feedback("Fullscreen: %s" % ("on" if on else "off"))
+			get_viewport().set_input_as_handled()
+			return
 	if not _game_started or _commander == null or _camera == null:
 		return
 	# F-mode owns input while possessed (except F/Esc handled below).

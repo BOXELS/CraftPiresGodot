@@ -61,7 +61,7 @@ func _lines() -> PackedStringArray:
 		"",
 		"Other",
 		"  F · possess selected unit (WASD + mouse look · F/Esc release)",
-		"  Hold Tab · radial menu   · H help   · F5 save · F9 load",
+		"  F11 · fullscreen   · Hold Tab · radial   · H help   · F5/F9 save/load",
 	])
 
 func toggle() -> void:

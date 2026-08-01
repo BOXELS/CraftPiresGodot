@@ -25,6 +25,7 @@ var _animals: AnimalField
 var _piles: PileField
 var _selection: SelectionManager
 var _population: Population
+var _help: HelpSheet
 var _sel_box: SelectionBox
 var _lmb_down: bool = false
 var _pave_last: Vector2i = Vector2i(-1, -1)   # last cell painted in a road stroke
@@ -207,6 +208,10 @@ func _show_title() -> void:
 	sel_layer.add_child(_sel_box)
 	add_child(sel_layer)
 
+	_help = HelpSheet.new()
+	_help.name = "Help"
+	add_child(_help)
+
 	# Optional: --menu-demo opens the radial menu (drilled into a submenu) and
 	# hovers a wedge so a --screenshot captures the shortcut-menu UI.
 	var demo_arg: String = _get_flag_arg("--menu-demo=")
@@ -366,6 +371,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_research_next()
 		elif k.pressed and not k.echo and k.keycode == KEY_ESCAPE:
 			_on_escape()
+		elif k.pressed and not k.echo and k.keycode == KEY_H:
+			if _help != null:
+				_help.toggle()
 		elif k.pressed and not k.echo and k.keycode == KEY_A and (Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)):
 			_select_all_peasants()
 		elif k.pressed and not k.echo and k.keycode == KEY_PERIOD:
@@ -611,6 +619,9 @@ func _on_number_key(n: int) -> void:
 		_menu.toggle_bar_category(n)
 
 func _on_escape() -> void:
+	if _help != null and _help.is_open():
+		_help.close()
+		return
 	if _menu == null:
 		return
 	if _menu.radial.is_open():

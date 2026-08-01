@@ -17,6 +17,7 @@ var _age: AgeManager
 var _ai: AIOpponent
 var _wincon: WinConditions
 var _season: Season
+var _menu: MenuController
 var _hud_label: Label
 var _place_cooldown: float = 0.0
 
@@ -154,6 +155,35 @@ func _show_title() -> void:
 	_season = Season.new()
 	_season.season_ended.connect(_on_season_ended)
 
+	# Shortcut menus: hold-Tab radial + nested build bar, wired to the world.
+	_menu = MenuController.new()
+	_menu.name = "Menus"
+	add_child(_menu)
+	_menu.setup(world, _units, _buildings, _combat, _depot, _commander)
+	_menu.action_feedback.connect(_on_menu_feedback)
+
+	# Optional: --menu-demo opens the radial menu (drilled into a submenu) and
+	# hovers a wedge so a --screenshot captures the shortcut-menu UI.
+	var demo_arg: String = _get_flag_arg("--menu-demo=")
+	if not demo_arg.is_empty() or OS.get_cmdline_user_args().has("--menu-demo"):
+		var which: String = demo_arg if not demo_arg.is_empty() else "build"
+		_menu.open_radial()
+		var cat: int = {"build": 0, "actions": 1, "settings": 2}.get(which, 0)
+		_menu.radial._hover = cat
+		_menu.radial.confirm_hover()   # drill into the category's submenu
+		_menu.radial._hover = 0        # hover the first item for the shot
+		_menu.radial.queue_redraw()
+		_frame_overview(world)
+		var demo_shot: String = _get_flag_arg("--screenshot=")
+		if not demo_shot.is_empty():
+			# Headless has no frame_post_draw; let two frames process so the
+			# CanvasLayer draws, then capture the viewport.
+			await get_tree().process_frame
+			await get_tree().process_frame
+			get_viewport().get_texture().get_image().save_png(demo_shot)
+		get_tree().quit(0)
+		return
+
 	_camera.focus_on(_commander.position)
 
 	# Optional: --screenshot=<path> frames the whole map and saves a PNG, then
@@ -231,6 +261,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
 			var pos: Variant = _terrain_click(mb.position)
 			if pos != null:
+				# Menu layer gets first crack at the click (armed placement /
+				# attack-move / terraform). Fall through to normal movement.
+				if _menu != null and _menu.handle_terrain_click(pos):
+					return
 				if Input.is_key_pressed(KEY_SHIFT):
 					_commander.order_beam_gather(pos)
 				else:
@@ -244,6 +278,10 @@ func _unhandled_input(event: InputEvent) -> void:
 					_dig_at(pos)        # instant carve (debug)
 				else:
 					_order_dig(pos)     # send a peasant to dig/mine here
+	elif event is InputEventMouseMotion:
+		# Track the radial wedge while the open key is held.
+		if _menu != null and Input.is_action_pressed("radial_menu"):
+			_menu.track_radial((event as InputEventMouseMotion).position)
 	elif event is InputEventKey:
 		var k := event as InputEventKey
 		if k.pressed and not k.echo and k.keycode == KEY_B:
@@ -252,10 +290,45 @@ func _unhandled_input(event: InputEvent) -> void:
 			_spawn_soldier()
 		elif k.pressed and not k.echo and k.keycode == KEY_T:
 			_research_next()
+		elif k.pressed and not k.echo and k.keycode == KEY_ESCAPE:
+			_on_escape()
+		elif k.pressed and not k.echo and k.keycode >= KEY_1 and k.keycode <= KEY_3:
+			_on_number_key(k.keycode - KEY_1)
 		elif k.pressed and not k.echo and k.keycode == KEY_F5:
 			_save()
 		elif k.pressed and not k.echo and k.keycode == KEY_F9:
 			_load()
+
+func _on_number_key(n: int) -> void:
+	# Build-bar drill-down (AoE2-style): with the bar closed, 1/2/3 open the
+	# Econ/Military/Wonder rows. While a row is open, the digits pick a building
+	# from that row instead of re-opening a category.
+	if _menu == null:
+		return
+	if _menu._bar_depth >= 1:
+		_menu.bar_select_item(n)
+	else:
+		_menu.toggle_bar_category(n)
+
+func _on_escape() -> void:
+	if _menu == null:
+		return
+	if _menu.radial.is_open():
+		_menu.pop_radial()
+	elif _menu._bar_depth > 0:
+		_menu.pop_bar()
+	else:
+		_menu.cancel_pending()
+
+func _on_menu_feedback(text: String) -> void:
+	if text == "save_requested":
+		_save()
+		return
+	if _hud_label != null:
+		_hud_label.text = text
+	# Restore the normal HUD line shortly after transient feedback.
+	await get_tree().create_timer(2.0).timeout
+	_update_hud()
 
 func _spawn_soldier() -> void:
 	# Train a soldier near the commander (S key).
@@ -304,6 +377,19 @@ func _load() -> void:
 	print("[main] loaded resources from save")
 
 func _process(_delta: float) -> void:
+	# Hold-Tab radial menu: open on press, confirm hovered wedge on release.
+	if _menu != null:
+		if Input.is_action_just_pressed("radial_menu"):
+			_menu.open_radial()
+		elif Input.is_action_just_released("radial_menu"):
+			_menu.release_radial()
+		# Track even without motion events so the wedge under a still mouse
+		# highlights the instant the menu opens.
+		if Input.is_action_pressed("radial_menu") and _menu.radial.is_open():
+			_menu.track_radial(get_viewport().get_mouse_position())
+		# F-mode drives the commander with WASD instead of click-to-move.
+		if _commander != null:
+			_commander.f_mode = _menu.mouse_mode == &"fmode"
 	# Fog reveal from living units each frame (cheap enough at this scale).
 	if _fog == null or _units == null:
 		return
@@ -421,4 +507,4 @@ func _update_hud() -> void:
 	var season_text := ""
 	if _season != null:
 		season_text = " · S%d d%d" % [_season.season_number, int(_season.elapsed_days)]
-	_hud_label.text = "CraftPires — LMB move · Shift+LMB beam · RMB dig · B build · S soldier · T tech · F5/F9" + cargo_text + season_text
+	_hud_label.text = "CraftPires — TAB menu · 1/2/3 build · LMB move · Shift+LMB beam · RMB dig · T tech · F5/F9" + cargo_text + season_text

@@ -29,6 +29,8 @@ var beam_mesh: MeshInstance3D
 var health: Health
 var alive: bool = true
 var respawn_point: Vector3 = Vector3.ZERO
+# F-mode: when set, WASD drives the commander directly instead of click-to-move.
+var f_mode: bool = false
 var _respawn_timer: float = 0.0
 var _beam_accum: float = 0.0
 
@@ -110,7 +112,24 @@ func _physics_process(delta: float) -> void:
 		position.y = ground_y
 
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
-	if has_target:
+	if f_mode:
+		# Direct WASD drive in F-mode; click-to-move target is ignored.
+		var input_dir := Vector2(
+			Input.get_axis("cam_pan_left", "cam_pan_right"),
+			Input.get_axis("cam_pan_up", "cam_pan_down"))
+		if input_dir.length() > 0.01:
+			input_dir = input_dir.normalized()
+			var fwd: Vector3 = -global_transform.basis.z
+			fwd.y = 0.0
+			fwd = fwd.normalized()
+			var right: Vector3 = global_transform.basis.x
+			right.y = 0.0
+			right = right.normalized()
+			horizontal = (right * input_dir.x + fwd * -input_dir.y) * SPEED
+			_face(horizontal)
+		else:
+			horizontal = Vector3.ZERO
+	elif has_target:
 		var to_target := Vector3(target_position.x, 0.0, target_position.z) - Vector3(position.x, 0.0, position.z)
 		var dist: float = to_target.length()
 		var stop_dist: float = BEAM_RANGE if beaming else 0.2

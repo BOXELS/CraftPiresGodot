@@ -12,6 +12,7 @@ const DEFAULT_BINDINGS: Dictionary = {
 	"cam_rotate_left": [KEY_Q],
 	"cam_rotate_right": [KEY_E],
 	"craft_sheet": [KEY_C],
+	"radial_menu": [KEY_TAB],
 }
 
 func _ready() -> void:

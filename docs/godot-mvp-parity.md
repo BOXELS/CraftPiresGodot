@@ -96,12 +96,8 @@ drill-down and Esc-back. Place/pave modes stay armed until Esc or RMB
 
 ## Port order (next phases)
 
-1. **Population + homestead** — pop cap from houses, staffed houses birth
-   peasants (food cost), rally points. *This is the core AoE2 loop.*
-2. **Food + animals + piles** — hunt wildlife, felled trees drop haulable piles.
-3. **Build menu restructure** — Settlement/Defense/Crafting groups, house +
-   storage tiers, dirt-road paving with move-speed bonus.
-4. **Waypoint queue + sprint** — Shift+RMB flags, Ctrl+RMB dash.
-5. **F-mode possession** — possess any unit, mouse-look, jump, crouch.
-6. **Help sheet (H)** — render the controls list in-game.
-7. **Transfer stock + commander supply line** — depot↔depot, peasant ferries.
+1. **House rally + newborn duty** — RMB rally on selected house; 0–4 duty.
+2. **Building staffing via RMB** — workshops / towers produce while staffed.
+3. **Visual destination flags** — show queued waypoints for selected units.
+4. **Transfer stock + commander supply line** — depot↔depot, peasant ferries.
+5. **Research Hall bench / tool racks** — research → hand-craft → smith queue.

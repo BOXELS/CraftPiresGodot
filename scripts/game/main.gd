@@ -20,6 +20,10 @@ var _season: Season
 var _menu: MenuController
 var _main_menu: MainMenu
 var _game_started: bool = false
+var _resources: ResourceNodes
+var _selection: SelectionManager
+var _sel_box: SelectionBox
+var _lmb_down: bool = false
 var _hud_label: Label
 var _place_cooldown: float = 0.0
 
@@ -78,6 +82,7 @@ func _show_title() -> void:
 	resources.name = "Resources"
 	add_child(resources)
 	resources.setup(world.shard)
+	_resources = resources
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 777
 	resources.scatter(rng, 120)
@@ -163,6 +168,17 @@ func _show_title() -> void:
 	add_child(_menu)
 	_menu.setup(world, _units, _buildings, _combat, _depot, _commander)
 	_menu.action_feedback.connect(_on_menu_feedback)
+
+	# AoE2 selection: click / box / shift / double-click, with rings + drag rect.
+	_selection = SelectionManager.new()
+	_selection.name = "Selection"
+	add_child(_selection)
+	_selection.setup(_units, _commander, _camera)
+	_sel_box = SelectionBox.new()
+	var sel_layer := CanvasLayer.new()
+	sel_layer.layer = 5
+	sel_layer.add_child(_sel_box)
+	add_child(sel_layer)
 
 	# Optional: --menu-demo opens the radial menu (drilled into a submenu) and
 	# hovers a wedge so a --screenshot captures the shortcut-menu UI.
@@ -276,30 +292,22 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
-			var pos: Variant = _terrain_click(mb.position)
-			if pos != null:
-				# Menu layer gets first crack at the click (armed placement /
-				# attack-move / terraform). Fall through to normal movement.
-				if _menu != null and _menu.handle_terrain_click(pos):
-					return
-				if Input.is_key_pressed(KEY_SHIFT):
-					_commander.order_beam_gather(pos)
-				else:
-					_commander.order_move(pos)
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			if mb.pressed:
+				_sel_box.begin(mb.position)
+				_lmb_down = true
+			else:
+				_lmb_down = false
+				_on_left_release(mb.position)
 		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
-			var pos: Variant = _terrain_click(mb.position)
-			if pos != null:
-				if Input.is_key_pressed(KEY_SHIFT):
-					_raise_at(pos)
-				elif Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META):
-					_dig_at(pos)        # instant carve (debug)
-				else:
-					_order_dig(pos)     # send a peasant to dig/mine here
+			_on_right_click(mb.position)
 	elif event is InputEventMouseMotion:
+		var mm := event as InputEventMouseMotion
 		# Track the radial wedge while the open key is held.
 		if _menu != null and Input.is_action_pressed("radial_menu"):
-			_menu.track_radial((event as InputEventMouseMotion).position)
+			_menu.track_radial(mm.position)
+		if _lmb_down and _sel_box.dragging:
+			_sel_box.update(mm.position)
 	elif event is InputEventKey:
 		var k := event as InputEventKey
 		if k.pressed and not k.echo and k.keycode == KEY_B:
@@ -310,12 +318,155 @@ func _unhandled_input(event: InputEvent) -> void:
 			_research_next()
 		elif k.pressed and not k.echo and k.keycode == KEY_ESCAPE:
 			_on_escape()
+		elif k.pressed and not k.echo and k.keycode == KEY_A and (Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META)):
+			_select_all_peasants()
+		elif k.pressed and not k.echo and k.keycode == KEY_PERIOD:
+			_cycle_idle_peasant(-1 if Input.is_key_pressed(KEY_SHIFT) else 1)
+		elif k.pressed and not k.echo and k.keycode == KEY_TAB:
+			_select_commander()
 		elif k.pressed and not k.echo and k.keycode >= KEY_1 and k.keycode <= KEY_3:
 			_on_number_key(k.keycode - KEY_1)
 		elif k.pressed and not k.echo and k.keycode == KEY_F5:
 			_save()
 		elif k.pressed and not k.echo and k.keycode == KEY_F9:
 			_load()
+
+# --- AoE2 selection + context commands --------------------------------------
+
+func _on_left_release(screen_pos: Vector2) -> void:
+	# Menu layer gets first crack (armed placement / attack-move / terraform).
+	if _menu != null and (_menu.pending_kind != &"" or _menu.pending_attack_move or _menu.pending_terraform != &""):
+		var pos: Variant = _terrain_click(screen_pos)
+		if pos != null and _menu.handle_terrain_click(pos):
+			_sel_box.cancel()
+			return
+	if _sel_box.dragging and _sel_box.is_real_drag():
+		# Box select.
+		var rect: Rect2 = _sel_box.finish()
+		var in_box: Array = _selection.units_in_box(rect)
+		if Input.is_key_pressed(KEY_SHIFT):
+			for u in in_box:
+				if not _selection.is_selected(u):
+					_selection.toggle(u)
+		else:
+			_selection.set_selection(in_box)
+		return
+	_sel_box.cancel()
+	# Single click: pick the unit under the cursor.
+	var u: Node3D = _pick_unit(screen_pos)
+	if u != null:
+		if Input.is_key_pressed(KEY_SHIFT):
+			_selection.toggle(u)
+		elif _selection.register_click(u):
+			_selection.select_same_on_screen(u)   # double-click: all same type
+		else:
+			_selection.select_only(u)
+	else:
+		# Clicked empty terrain: clear selection (unless shift held).
+		if not Input.is_key_pressed(KEY_SHIFT):
+			_selection.clear()
+
+func _on_right_click(screen_pos: Vector2) -> void:
+	var pos: Variant = _terrain_click(screen_pos)
+	if pos == null:
+		return
+	# Debug terraforming modifiers take priority (existing behavior).
+	if Input.is_key_pressed(KEY_SHIFT):
+		_raise_at(pos)
+		return
+	if Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META):
+		_dig_at(pos)
+		return
+	_issue_context_command(pos, screen_pos)
+
+## AoE2 smart right-click: route the order by what was clicked and who is selected.
+func _issue_context_command(pos: Vector3, screen_pos: Vector2) -> void:
+	# Soldiers (attack-move) first — they're the military branch of the selection.
+	var soldiers: Array = _selection.soldiers()
+	if not soldiers.is_empty():
+		for s in soldiers:
+			s.order_attack_move(pos)
+		return
+	# Commander: beam-gather on resources, otherwise move.
+	if _selection.has_commander():
+		var tree: Node3D = _resources.nearest_tree(pos, 2.5) if _resources != null else null
+		if tree != null:
+			_commander.order_beam_gather(tree.position)
+		else:
+			_commander.order_move(pos)
+		return
+	# Peasants: build site > gather tree > dig/mine ground.
+	var peasants: Array = _selection.peasants()
+	if not peasants.is_empty():
+		var site: ConstructionSite = _buildings.site_near(pos, 4.0) if _buildings != null else null
+		if site != null:
+			for p in peasants:
+				p.order_haul(site, _depot)
+			return
+		var tree: Node3D = _resources.nearest_tree(pos, 2.5) if _resources != null else null
+		if tree != null:
+			for p in peasants:
+				p.order_gather(tree.position, &"wood")
+			return
+		# Bare ground: dig dirt or mine stone by surface material.
+		var x: int = int(pos.x)
+		var z: int = int(pos.z)
+		var kind: StringName = &"stone" if _world.shard.surface_material(x, z) == 3 else &"dirt"
+		for p in peasants:
+			p.order_dig(pos, kind)
+		return
+	# Nothing selected: fall back to sending the nearest free peasant to dig.
+	_order_dig(pos)
+
+func _pick_unit(screen_pos: Vector2) -> Node3D:
+	# Units don't body-collide (heightmap-driven), so pick by screen proximity
+	# to each unit's projected position rather than a physics ray.
+	var cam := _camera.get_node_or_null("Camera3D") as Camera3D
+	if cam == null:
+		return null
+	var best: Node3D = null
+	var best_d: float = 28.0 * 28.0   # px² pick radius
+	for u in _selection.all_units():
+		if cam.is_position_behind(u.global_position):
+			continue
+		var sp: Vector2 = cam.unproject_position(u.global_position)
+		var d: float = sp.distance_squared_to(screen_pos)
+		if d < best_d:
+			best_d = d
+			best = u
+	return best
+
+func _select_all_peasants() -> void:
+	var list: Array = []
+	for p in _units.peasants:
+		if is_instance_valid(p):
+			list.append(p)
+	_selection.set_selection(list)
+
+func _cycle_idle_peasant(dir: int) -> void:
+	var idle: Array = []
+	for p in _units.peasants:
+		if is_instance_valid(p) and p.brain.order == &"idle":
+			idle.append(p)
+	if idle.is_empty():
+		return
+	idle.sort_custom(func(a, b): return a.get_instance_id() < b.get_instance_id())
+	var idx: int = 0
+	if _selection.count() == 1:
+		var cur: int = idle.find(_selection.selected[0])
+		if cur >= 0:
+			idx = (cur + dir + idle.size()) % idle.size()
+	var next: Peasant = idle[idx]
+	_selection.select_only(next)
+	_camera.focus_on(next.position)
+
+func _select_commander() -> void:
+	if _commander == null:
+		return
+	if _selection.count() == 1 and _selection.selected[0] == _commander:
+		_camera.focus_on(_commander.position)   # Tab again: jump camera
+	else:
+		_selection.select_only(_commander)
 
 func _on_number_key(n: int) -> void:
 	# Build-bar drill-down (AoE2-style): with the bar closed, 1/2/3 open the
@@ -527,4 +678,4 @@ func _update_hud() -> void:
 	var season_text := ""
 	if _season != null:
 		season_text = " · S%d d%d" % [_season.season_number, int(_season.elapsed_days)]
-	_hud_label.text = "CraftPires — TAB menu · 1/2/3 build · LMB move · Shift+LMB beam · RMB dig · T tech · F5/F9" + cargo_text + season_text
+	_hud_label.text = "CraftPires — LMB select/drag · RMB command · Shift+RMB raise · TAB menu · 1/2/3 build · . idle · F5/F9" + cargo_text + season_text

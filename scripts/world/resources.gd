@@ -54,3 +54,17 @@ func _mat(color: Color) -> StandardMaterial3D:
 
 func tree_count() -> int:
 	return _trees.size()
+
+## Nearest living tree within `radius` of a point, or null. Used by context
+## commands (RMB on a tree = gather wood).
+func nearest_tree(pos: Vector3, radius: float = 2.0) -> Node3D:
+	var best: Node3D = null
+	var best_d: float = radius * radius
+	for t in _trees:
+		if not is_instance_valid(t):
+			continue
+		var d: float = Vector2(t.position.x, t.position.z).distance_squared_to(Vector2(pos.x, pos.z))
+		if d < best_d:
+			best_d = d
+			best = t
+	return best
